@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "context7": {
+      "httpUrl": "https://mcp.context7.com/mcp",
+      "autoApprove": [
+        "resolve_library_id",
+        "get_library_docs"
+      ]
+    }
+  }
+}
