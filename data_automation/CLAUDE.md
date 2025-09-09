@@ -662,3 +662,227 @@ header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # 가구매 개수
 **📋 현재 상태:**
 가구매 관리 시스템의 핵심 구조는 완성되었으며, 초기화 순서 문제 해결 후 완전한 기능 제공 예정입니다.
 
+---
+
+### 🎨 UI/UX 개선 및 오류 추적 시스템 구현 (2025-09-09 완료)
+
+**🎯 2025-09-09 완료된 핵심 개선사항:**
+
+## **1. 실시간 통계 카드 가시성 개선**
+
+### **문제 상황**
+- 실시간 통계 섹션의 카드들이 제대로 표시되지 않음
+- 글자가 잘리거나 보이지 않는 문제
+- 통계 값이 카드 크기에 비해 작게 표시됨
+
+### **구현한 해결책**
+
+#### **ModernDataCard 클래스 전면 개편**
+```python
+class ModernDataCard(QFrame):
+    def __init__(self, title, value, icon_name, color=MaterialColors.PRIMARY, tooltip=""):
+        # 카드 크기 확장
+        self.setMinimumHeight(160)
+        self.setMaximumHeight(200)
+        
+        # 명확한 스타일링
+        self.setStyleSheet(f"""
+            ModernDataCard {{
+                background-color: #FFFFFF;
+                border: 3px solid #DDDDDD;
+                border-radius: 10px;
+                padding: 15px;
+            }}
+            ModernDataCard:hover {{
+                border-color: {self.color};
+                background-color: #F5F5F5;
+            }}
+        """)
+        
+        # 명확한 이모지 아이콘 사용
+        icon_map = {
+            "fa5s.file-alt": "📄",
+            "fa5s.dollar-sign": "💰", 
+            "fa5s.chart-line": "📈",
+            "fa5s.exclamation-triangle": "⚠️"
+        }
+        
+        # 대비가 높은 텍스트 색상
+        self.value_label.setStyleSheet("""
+            font-size: 28px;
+            font-weight: bold;
+            color: #000000;  # 완전한 검은색
+            margin: 0;
+            padding: 8px 0;
+            background-color: transparent;
+        """)
+```
+
+#### **그리드 레이아웃 최적화**
+```python
+def create_stats_section(self):
+    # 그리드 레이아웃 여백 설정
+    kpi_layout.setContentsMargins(20, 20, 20, 20)
+    kpi_layout.setSpacing(15)
+    
+    # 컬럼별 균등 크기 설정
+    kpi_layout.setColumnStretch(0, 1)
+    kpi_layout.setColumnStretch(1, 1)
+    kpi_layout.setColumnStretch(2, 1)
+    kpi_layout.setColumnStretch(3, 1)
+```
+
+## **2. 오류 추적 및 표시 시스템 구현**
+
+### **완전한 오류 추적 시스템**
+```python
+class ModernSalesAutomationApp(QMainWindow):
+    def __init__(self):
+        # 오류 추적 시스템
+        self.error_messages = []  # 오류 메시지 리스트
+        self.error_count = 0      # 오류 카운터
+        
+    def on_error(self, msg):
+        # 오류 메시지 추가 (시간과 함께 저장)
+        error_entry = {
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'message': msg,
+            'type': self.classify_error(msg)
+        }
+        self.error_messages.append(error_entry)
+        
+        # 오류 카운터 업데이트
+        self.error_count += 1
+        self.error_card.update_value(f"{self.error_count}개")
+        
+        # 최근 100개 오류만 유지 (메모리 관리)
+        if len(self.error_messages) > 100:
+            self.error_messages = self.error_messages[-100:]
+```
+
+#### **클릭 가능한 오류 카드**
+```python
+# 에러 카드를 클릭 가능하게 만들기
+self.error_card.setCursor(Qt.PointingHandCursor)
+self.error_card.mousePressEvent = self.show_error_details
+
+def show_error_details(self, event):
+    if not self.error_messages:
+        QMessageBox.information(self, "알림", "현재 발생한 오류가 없습니다.")
+        return
+    
+    dialog = ErrorDetailsDialog(self.error_messages, self)
+    dialog.exec()
+```
+
+#### **ErrorDetailsDialog 구현**
+```python
+class ErrorDetailsDialog(QDialog):
+    def __init__(self, error_messages, parent=None):
+        # 오류 목록을 테이블로 표시
+        # 시간, 타입, 메시지별 분류
+        # 오류 삭제 및 필터링 기능 제공
+```
+
+#### **모든 워커 스레드 오류 시그널 연결**
+```python
+# 자동 모니터링 워커
+self.worker.error_signal.connect(self.on_error)
+
+# 수동 처리 워커  
+self.manual_worker.error_signal.connect(self.on_error)
+
+# 주간 리포트 워커
+self.weekly_worker.error_signal.connect(self.on_error)
+```
+
+## **3. 다이얼로그 UI 개선**
+
+### **하단 고정 버튼 시스템**
+- **문제**: 리워드/가구매 관리 다이얼로그에서 저장/취소 버튼이 스크롤해야 보임
+- **해결**: 버튼들을 스크롤 영역 밖으로 분리하여 하단에 고정
+
+#### **리워드 관리 다이얼로그**
+```python
+# 스크롤 영역 설정 (버튼들은 제외)
+scroll_area.setWidget(scroll_content)
+main_layout.addWidget(scroll_area)
+
+# 하단 고정 버튼들 (스크롤 영역 밖에 배치)
+button_widget = QWidget()
+button_widget.setStyleSheet("background: #f8f9fa; border-top: 1px solid #dee2e6; padding: 10px;")
+
+self.save_button = QPushButton("💾 저장")
+self.cancel_button = QPushButton("❌ 취소")
+
+# 하단 고정 버튼 위젯을 메인 레이아웃에 추가
+main_layout.addWidget(button_widget)
+```
+
+#### **가구매 관리 다이얼로그**
+- 리워드 관리와 동일한 하단 고정 버튼 구조 적용
+- 일관된 사용자 경험 제공
+
+## **4. 해결된 주요 문제들**
+
+### **✅ 실시간 통계 카드 가시성**
+- **문제**: 카드 내 텍스트가 잘리거나 보이지 않음
+- **해결**: 카드 높이 확장 (160~200px), 명확한 텍스트 색상 (#000000)
+- **결과**: 모든 통계 정보가 명확하게 표시됨
+
+### **✅ 오류 추적 시스템**
+- **문제**: 오류 발생 시 실시간 진행 섹션에 표시되지 않음
+- **해결**: 완전한 오류 추적 및 표시 시스템 구현
+- **결과**: 모든 오류가 카운터에 표시되고 클릭 시 상세 정보 확인 가능
+
+### **✅ 다이얼로그 사용성**
+- **문제**: 저장/취소 버튼이 스크롤해야 보임
+- **해결**: 하단 고정 버튼으로 항상 접근 가능
+- **결과**: 스크롤 위치에 관계없이 항상 버튼 사용 가능
+
+## **5. 기술적 구현 세부사항**
+
+### **성능 최적화**
+- QGraphicsDropShadowEffect 제거로 렌더링 성능 향상
+- 간단한 이모지 아이콘 사용으로 의존성 문제 해결
+- 메모리 효율적인 오류 메시지 관리 (최근 100개만 유지)
+
+### **사용자 경험 개선**
+- 명확한 시각적 피드백 (호버 효과, 색상 대비)
+- 일관된 버튼 디자인과 배치
+- 직관적인 아이콘과 텍스트 사용
+
+### **안정성 강화**
+- 모든 워커 스레드의 오류를 중앙 집중 처리
+- 사용자 친화적인 오류 메시지 분류 시스템
+- 메모리 누수 방지를 위한 자동 정리 기능
+
+## **6. 최종 완성 기능들**
+
+### **✅ 실시간 통계 대시보드**
+- 📄 **처리된 파일**: 완료된 파일 수 실시간 표시
+- 💰 **총 매출**: 누적 매출액 자동 계산
+- 📈 **순이익**: 실시간 수익성 분석  
+- ⚠️ **에러**: 발생한 오류 개수 (클릭하여 상세 내용 확인)
+
+### **✅ 사용자 친화적 다이얼로그**
+- **리워드 관리**: 날짜별 리워드 설정, 하단 고정 버튼
+- **가구매 관리**: 날짜별 가구매 개수 설정, 하단 고정 버튼
+- **주간 리포트**: 기간별 통합 리포트 생성
+
+### **✅ 포괄적 오류 처리**
+- 실시간 오류 카운터 표시
+- 클릭 가능한 오류 상세 정보
+- 오류 타입별 분류 시스템
+- 오류 기록 삭제 및 관리 기능
+
+**🎉 UI/UX 및 오류 추적 시스템 완성 (2025-09-09):**
+- ✅ 실시간 통계 카드 완전 가시성 확보
+- ✅ 포괄적 오류 추적 및 표시 시스템 구현
+- ✅ 사용자 친화적 다이얼로그 UI 완성
+- ✅ 일관된 Material Design 3 적용
+- ✅ 성능 최적화 및 안정성 강화
+
+**📋 최종 배포 준비:**
+모든 UI/UX 문제가 해결되고 오류 추적 시스템이 완성되어 실무에서 안정적으로 사용할 수 있는 최종 버전입니다.
+

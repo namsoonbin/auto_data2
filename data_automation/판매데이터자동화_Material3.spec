@@ -1,23 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_all
-
-datas = [('modules', 'modules'), ('마진정보.xlsx', '.')]
-binaries = []
-hiddenimports = ['pandas', 'openpyxl', 'xlsxwriter', 'watchdog', 'numpy', 'PySide6.QtCore', 'PySide6.QtWidgets', 'PySide6.QtGui', 'msoffcrypto', 'cryptography']
-tmp_ret = collect_all('qt_material')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('qtawesome')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('pyqtdarktheme')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
     ['desktop_app.py'],
     pathex=[],
-    binaries=binaries,
-    datas=datas,
-    hiddenimports=hiddenimports,
+    binaries=[],
+    datas=[],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

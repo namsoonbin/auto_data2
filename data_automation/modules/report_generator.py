@@ -732,111 +732,7 @@ def generate_individual_reports():
     logging.info("--- 1단계: 주문조회 기반 개별 통합 리포트 생성 완료 ---")
     return processed_groups
 
-def create_weekly_report(start_date_str, end_date_str):
-    """
-    지정된 기간 동안의 일일 전체 통합 리포트를 취합하여 주간/월간 통합 리포트를 생성합니다.
-    이 함수는 자동화 흐름에 포함되지 않으며, 별도로 호출해야 합니다.
-    """
-    logging.info(f"--- 3단계: 주간/월간 통합 리포트 생성 시작 ({start_date_str} ~ {end_date_str}) ---")
 
-    try:
-        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
-    except ValueError:
-        logging.error("날짜 형식이 잘못되었습니다. 'YYYY-MM-DD' 형식으로 입력해주세요.")
-        return
-
-    report_archive_dir = config.get_report_archive_dir()
-    if not os.path.exists(report_archive_dir):
-        logging.warning(f"리포트 보관함 폴더를 찾을 수 없습니다: {report_archive_dir}")
-        return
-
-    # 리포트 보관함에서 전체 통합 리포트 파일 찾기
-    all_daily_reports = glob.glob(os.path.join(report_archive_dir, '전체_통합_리포트_*.xlsx'))
-    
-    date_pattern = re.compile(r'전체_통합_리포트_(\d{4}-\d{2}-\d{2})\.xlsx')
-    
-    target_files = []
-    for report_path in all_daily_reports:
-        match = date_pattern.search(os.path.basename(report_path))
-        if match:
-            report_date_str = match.group(1)
-            report_date = datetime.strptime(report_date_str, '%Y-%m-%d').date()
-            if start_date <= report_date <= end_date:
-                target_files.append(report_path)
-
-    if not target_files:
-        logging.warning(f"기간 내({start_date_str} ~ {end_date_str})에 취합할 일일 통합 리포트가 없습니다.")
-        return
-
-    logging.info(f"총 {len(target_files)}개의 일일 리포트를 취합합니다.")
-
-    all_dfs = []
-    for file_path in target_files:
-        try:
-            df = pd.read_excel(file_path, sheet_name='전체 통합 데이터', engine='openpyxl')
-            all_dfs.append(df)
-            logging.info(f"-> '{os.path.basename(file_path)}' 통합 완료: {len(df)}행 데이터 추가")
-        except Exception as e:
-            logging.error(f"-> '{os.path.basename(file_path)}' 처리 중 오류: {e}")
-
-    if not all_dfs:
-        logging.error("리포트 데이터를 읽는 데 모두 실패했습니다.")
-        return
-
-    # 데이터 통합 및 재집계
-    master_df = pd.concat(all_dfs, ignore_index=True)
-    logging.info(f"-> 총 {len(master_df)}행의 데이터를 통합했습니다. 이제 재집계합니다.")
-
-    # 집계 로직은 consolidate_daily_reports와 거의 동일
-    grouping_keys = ['스토어명', '상품ID', '상품명', '옵션정보']
-    for key in grouping_keys:
-        if key in master_df.columns:
-            master_df[key] = master_df[key].fillna('').astype(str)
-
-    agg_methods = {
-        '수량': 'sum', '판매마진': 'sum', '결제수': 'sum', '결제금액': 'sum',
-        '환불건수': 'sum', '환불금액': 'sum', '환불수량': 'sum',
-        '가구매 개수': 'sum', '판매가': 'mean', '마진율': 'mean',
-        '가구매 비용': 'sum', '순매출': 'sum', '매출': 'sum', '가구매 금액': 'sum',
-        '이윤율': 'mean', '광고비율': 'mean', '순이익': 'sum', '리워드': 'sum'
-    }
-    actual_agg_methods = {k: v for k, v in agg_methods.items() if k in master_df.columns}
-    
-    aggregated_df = master_df.groupby(grouping_keys, as_index=False).agg(actual_agg_methods)
-    logging.info(f"-> 주간 데이터 집계 완료: {len(aggregated_df)}행")
-
-    for col in ['마진율', '광고비율', '이윤율']:
-        if col in aggregated_df.columns:
-            aggregated_df[col] = aggregated_df[col].round(1)
-
-    final_columns = ['스토어명'] + [col for col in config.COLUMNS_TO_KEEP if col in aggregated_df.columns]
-    aggregated_df = aggregated_df[final_columns]
-
-    # 주간 리포트 파일 저장
-    output_filename = f'주간_전체_통합_리포트_{start_date_str}_to_{end_date_str}.xlsx'
-    output_path = os.path.join(report_archive_dir, output_filename)
-
-    try:
-        with pd.ExcelWriter(output_path, engine='xlsxwriter') as writer:
-            aggregated_df.to_excel(writer, sheet_name='주간 통합 데이터', index=False)
-            worksheet = writer.sheets['주간 통합 데이터']
-            (max_row, max_col) = aggregated_df.shape
-            worksheet.add_table(0, 0, max_row, max_col - 1, {'columns': [{'header': col} for col in aggregated_df.columns]})
-            for i, col in enumerate(aggregated_df.columns):
-                col_len = max(aggregated_df[col].astype(str).map(len).max(), len(col)) + 2
-                worksheet.set_column(i, i, col_len)
-        
-        if os.path.exists(output_path):
-            file_size = os.path.getsize(output_path)
-            logging.info(f"-> '{os.path.basename(output_path)}' 생성 완료: {output_path} (파일 크기: {file_size:,} bytes)")
-        else:
-            logging.error(f"-> 주간 리포트 생성 실패: {output_path} 파일이 생성되지 않음")
-
-    except Exception as e:
-        logging.error(f"-> 주간 리포트 파일 저장 중 오류: {e}")
-    finally:
-        logging.info(f"--- 3단계: 주간/월간 통합 리포트 생성 완료 ---")
 
 def consolidate_daily_reports():
     """날짜별로 생성된 모든 개별 리포트를 취합하여 전체 통합 리포트를 생성합니다."""
@@ -846,7 +742,7 @@ def consolidate_daily_reports():
         logging.info("취합할 개별 통합 리포트가 없습니다.")
         return
 
-    date_pattern = re.compile(r'_(\d{4}-\d{2}-\d{2})\.xlsx$')
+    date_pattern = re.compile(r'_(\d{4}-\d{2}-\d{2})\.xlsx')
     unique_dates = set()
     for f in all_report_files:
         match = date_pattern.search(os.path.basename(f))
