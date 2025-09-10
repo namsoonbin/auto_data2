@@ -224,6 +224,7 @@ def get_purchase_count_for_date_and_product(product_id, date_str):
 
 def generate_individual_reports():
     """개별 스토어의 주문조회 파일을 기반으로 옵션별 통합 리포트를 생성합니다."""
+    logging.info("🎯 ===== GENERATE_INDIVIDUAL_REPORTS 함수 호출됨 =====")
     logging.info("--- 1단계: 주문조회 기반 개별 통합 리포트 생성 시작 ---")
     
     # 마진정보 파일 로드 및 검증
@@ -297,15 +298,21 @@ def generate_individual_reports():
         return []
 
     # 처리 가능한 파일들 찾기
+    logging.info(f"🔍 작업폴더 스캔: {config.get_processing_dir()}")
     all_files = [f for f in os.listdir(config.get_processing_dir()) if f.endswith('.xlsx') and not f.startswith('~')]
+    logging.info(f"📄 전체 Excel 파일들 ({len(all_files)}개): {all_files}")
+    
     source_files = [f for f in all_files if '통합_리포트' not in f and '마진정보' not in f]
+    logging.info(f"📊 원본 파일들 ({len(source_files)}개): {source_files}")
 
     # 주문조회 파일만 필터링
     order_files = [f for f in source_files if '스마트스토어_주문조회' in f]
+    logging.info(f"🛒 주문조회 파일들 ({len(order_files)}개): {order_files}")
     
     if not order_files:
-        logging.info("처리할 주문조회 파일이 없습니다.")
-        return True
+        logging.warning("⚠️ 처리할 주문조회 파일이 없습니다!")
+        logging.info("📋 파일명 패턴을 확인해주세요: 파일명에 '스마트스토어_주문조회'가 포함되어야 합니다.")
+        return []  # True 대신 빈 리스트 반환
 
     logging.info(f"총 {len(order_files)}개의 주문조회 파일에 대한 리포트를 생성합니다.")
     processed_groups = []
@@ -453,6 +460,110 @@ def generate_individual_reports():
             option_summary = order_df.groupby(group_cols, as_index=False).agg(agg_dict)
             
             logging.info(f"-> {store}({date}) 옵션별 집계 완료: {len(option_summary)}개 옵션")
+            
+            # 리워드가 설정된 상품 중 누락된 것들을 0 데이터로 추가
+            logging.info(f"-> {store}({date}) 리워드 설정된 상품 중 누락된 상품 체크...")
+            try:
+                # 리워드 설정 파일에서 해당 날짜의 설정된 상품들 가져오기
+                reward_file = os.path.join(config.BASE_DIR, '리워드설정.json')
+                logging.info(f"-> {store}({date}) 리워드 파일 경로: {reward_file}")
+                logging.info(f"-> {store}({date}) 리워드 파일 절대경로: {os.path.abspath(reward_file)}")
+                missing_products = []
+                
+                if os.path.exists(reward_file):
+                    logging.info(f"-> {store}({date}) 리워드 파일 존재함, 파일 크기: {os.path.getsize(reward_file)} bytes")
+                    logging.info(f"-> {store}({date}) 파일 읽기 권한 확인: {os.access(reward_file, os.R_OK)}")
+                    
+                    try:
+                        with open(reward_file, 'r', encoding='utf-8') as f:
+                            file_content = f.read()
+                            logging.info(f"-> {store}({date}) 파일 내용 길이: {len(file_content)} 문자")
+                            logging.info(f"-> {store}({date}) 파일 내용 첫 100자: {file_content[:100]}")
+                            
+                        # JSON 파싱
+                        with open(reward_file, 'r', encoding='utf-8') as f:
+                            reward_data = json.load(f)
+                            logging.info(f"-> {store}({date}) JSON 파싱 성공, 데이터 타입: {type(reward_data)}")
+                            if isinstance(reward_data, dict):
+                                logging.info(f"-> {store}({date}) JSON 키들: {list(reward_data.keys())}")
+                                if 'rewards' in reward_data:
+                                    logging.info(f"-> {store}({date}) rewards 배열 길이: {len(reward_data.get('rewards', []))}")
+                    except json.JSONDecodeError as e:
+                        logging.error(f"-> {store}({date}) JSON 파싱 오류: {e}")
+                        logging.error(f"-> {store}({date}) 오류 위치: line {e.lineno}, column {e.colno}")
+                        raise
+                    except Exception as e:
+                        logging.error(f"-> {store}({date}) 파일 읽기 오류: {e}")
+                        raise
+                    
+                    # 해당 날짜에 리워드가 설정된 상품들 찾기
+                    rewarded_products = set()
+                    for reward_entry in reward_data.get('rewards', []):
+                        start_date = reward_entry.get('start_date', '')
+                        end_date = reward_entry.get('end_date', '')
+                        product_id = str(reward_entry.get('product_id', ''))
+                        
+                        # 날짜 범위 체크 (날짜가 해당 범위에 포함되는지)
+                        if start_date <= date <= end_date and product_id:
+                            rewarded_products.add(product_id)
+                    
+                    logging.info(f"-> {store}({date}) 리워드 설정된 상품들: {list(rewarded_products)}")
+                    
+                    # 주문조회에 없는 리워드 설정 상품들 찾기
+                    existing_products = set(option_summary['상품ID'].astype(str))
+                    missing_rewarded_products = rewarded_products - existing_products
+                    
+                    if missing_rewarded_products:
+                        logging.info(f"-> {store}({date}) 주문조회에 없는 리워드 설정 상품 {len(missing_rewarded_products)}개: {list(missing_rewarded_products)}")
+                        
+                        # 누락된 상품들을 0 데이터로 추가
+                        for product_id in missing_rewarded_products:
+                            # 마진정보에서 해당 상품의 대표옵션 찾기
+                            product_margin = margin_df[
+                                (margin_df['상품ID'] == product_id) & 
+                                (margin_df['대표옵션'] == True)
+                            ]
+                            
+                            if len(product_margin) > 0:
+                                product_info = product_margin.iloc[0]
+                                # 0 데이터 행 생성
+                                zero_row = {
+                                    '상품ID': product_id,
+                                    '옵션정보': product_info.get('옵션정보', ''),
+                                    '수량': 0,
+                                    '환불수량': 0
+                                }
+                                
+                                # 상품명이 있다면 추가
+                                if 'product_name' in locals() and '상품명' in option_summary.columns:
+                                    zero_row['상품명'] = product_info.get('상품명', f'상품{product_id}')
+                                
+                                missing_products.append(zero_row)
+                                logging.info(f"-> {store}({date}) 0 데이터 추가: 상품 {product_id}")
+                    else:
+                        logging.info(f"-> {store}({date}) 모든 리워드 설정 상품이 주문조회에 존재합니다.")
+                
+                # 누락된 상품들을 option_summary에 추가
+                if missing_products:
+                    missing_df = pd.DataFrame(missing_products)
+                    option_summary = pd.concat([option_summary, missing_df], ignore_index=True)
+                    logging.info(f"-> {store}({date}) {len(missing_products)}개 리워드 상품을 0 데이터로 추가 완료")
+                    logging.info(f"-> {store}({date}) 최종 옵션별 집계: {len(option_summary)}개 옵션")
+                else:
+                    logging.info(f"-> {store}({date}) 리워드 파일이 존재하지 않습니다: {reward_file}")
+                    logging.info(f"-> {store}({date}) 0 데이터 추가 없이 계속 진행합니다.")
+                    
+            except json.JSONDecodeError as e:
+                logging.error(f"-> {store}({date}) 리워드 설정 파일 JSON 형식 오류: {e}")
+                logging.error(f"-> {store}({date}) 파일 내용을 확인해주세요.")
+            except FileNotFoundError:
+                logging.info(f"-> {store}({date}) 리워드 설정 파일을 찾을 수 없습니다. 0 데이터 추가 없이 진행합니다.")
+            except PermissionError:
+                logging.error(f"-> {store}({date}) 리워드 설정 파일 읽기 권한이 없습니다.")
+            except Exception as e:
+                logging.error(f"-> {store}({date}) 리워드 설정 상품 추가 중 예상치 못한 오류: {e}")
+                import traceback
+                logging.error(f"-> {store}({date}) 상세 오류 정보: {traceback.format_exc()}")
             
             # 판매가는 마진정보 파일에서만 가져옴 (주문조회 파일에는 판매가 컬럼이 없음)
             logging.info(f"-> {store}({date}) 판매가는 마진정보 파일에서 가져옵니다.")
@@ -730,6 +841,8 @@ def generate_individual_reports():
                 pass
     
     logging.info("--- 1단계: 주문조회 기반 개별 통합 리포트 생성 완료 ---")
+    logging.info(f"🎯 ===== GENERATE_INDIVIDUAL_REPORTS 함수 종료: {len(processed_groups)}개 그룹 처리됨 =====")
+    logging.info(f"📋 처리된 그룹들: {processed_groups}")
     return processed_groups
 
 
@@ -742,7 +855,7 @@ def consolidate_daily_reports():
         logging.info("취합할 개별 통합 리포트가 없습니다.")
         return
 
-    date_pattern = re.compile(r'_(\d{4}-\d{2}-\d{2})\.xlsx')
+    date_pattern = re.compile(r'_(\d{4}-\d{2}-\d{2})\.xlsx$')
     unique_dates = set()
     for f in all_report_files:
         match = date_pattern.search(os.path.basename(f))

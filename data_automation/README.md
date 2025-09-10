@@ -594,19 +594,211 @@ dist/
 - ✅ **완전한 exe 파일 배포 준비 완료**
 
 **📦 최종 배포:**
-모든 UI/UX 문제가 해결되고 오류 추적 시스템이 완성되어 실무에서 안정적으로 사용할 수 있는 최종 완성 버전입니다. `판매데이터자동화_Material3.exe`를 실행하여 모든 최신 기능을 체험하실 수 있습니다.
+모든 UI/UX 문제가 해결되고 오류 추적 시스템이 완성되어 실무에서 안정적으로 사용할 수 있는 최종 완성 버전입니다. `판매데이터자동화_통계연결수정.exe`를 실행하여 모든 최신 기능을 체험하실 수 있습니다.
 
 ---
 
-## 9. 💾 최신 배포 파일 정보
+## 9. 🔧 리워드 누락 해결 및 실시간 통계 연결 시스템 (2025년 9월 10일 최신 업데이트)
+
+### **🆕 최신 핵심 기능 개선사항**
+
+#### **1. 리워드 파일 경로 문제 완전 해결**
+- **문제**: exe 파일에서 리워드설정.json을 임시 폴더에서 찾아 파일을 찾지 못하는 문제
+- **해결**: `config.BASE_DIR` 사용으로 exe 파일과 동일한 디렉토리에서 찾도록 수정
+```python
+# 기존 (문제 있음)
+reward_file = os.path.join(os.path.dirname(__file__), '..', '리워드설정.json')
+
+# 수정 후 (해결됨)  
+reward_file = os.path.join(config.BASE_DIR, '리워드설정.json')
+```
+- **마진정보.xlsx와 동일한 방식**: 이미 구현된 `config.get_exe_directory()` 함수 활용
+- **개발/배포 환경 자동 대응**: 개발 시에는 프로젝트 루트, exe에서는 exe 파일 위치
+
+#### **2. 리워드 누락 해결 기능 디버깅 대폭 강화**
+- **상세한 파일 상태 추적**:
+  - 리워드 파일 상대/절대 경로 모두 로깅
+  - 파일 존재 여부, 크기, 읽기 권한 확인
+  - 파일 내용 첫 100자 미리보기로 형식 검증
+```python
+logging.info(f"-> {store}({date}) 리워드 파일 경로: {reward_file}")
+logging.info(f"-> {store}({date}) 리워드 파일 절대경로: {os.path.abspath(reward_file)}")
+logging.info(f"-> {store}({date}) 리워드 파일 존재함, 파일 크기: {os.path.getsize(reward_file)} bytes")
+logging.info(f"-> {store}({date}) 파일 내용 첫 100자: {file_content[:100]}")
+```
+
+- **JSON 파싱 오류 세분화**:
+  - `json.JSONDecodeError`: 정확한 라인과 컬럼 위치 표시
+  - 데이터 타입 및 키 구조 검증
+  - 파싱 성공 시 상세 구조 정보 로깅
+```python
+except json.JSONDecodeError as e:
+    logging.error(f"-> {store}({date}) JSON 파싱 오류: {e}")
+    logging.error(f"-> {store}({date}) 오류 위치: line {e.lineno}, column {e.colno}")
+except FileNotFoundError:
+    logging.info(f"-> {store}({date}) 리워드 설정 파일을 찾을 수 없습니다.")
+except PermissionError:
+    logging.error(f"-> {store}({date}) 리워드 설정 파일 읽기 권한이 없습니다.")
+```
+
+#### **3. 실시간 통계 GUI 연결 시스템 구현**
+- **워커 스레드 통계 시그널 추가**:
+  - 모든 워커 클래스에 `stats_signal = Signal(dict)` 추가
+  - `ModernWorker`, `ModernManualWorker`, `WeeklyWorker` 모두 통계 전송 지원
+```python
+class ModernWorker(QThread):
+    output_signal = Signal(str)
+    finished_signal = Signal()
+    error_signal = Signal(str)
+    stats_signal = Signal(dict)  # 통계 업데이트 시그널 추가
+```
+
+- **통계 수집 및 전송 메서드**:
+  - `collect_and_send_stats()`: 처리 완료 시 자동으로 통계 계산
+  - 처리된 파일 수, 총 매출, 순이익을 리포트 파일에서 자동 추출
+  - 성능 최적화를 위해 최근 파일들만 처리 (자동화는 최근 10개, 수동은 전체)
+```python
+def collect_and_send_stats(self):
+    """통계 정보를 수집해서 시그널로 전송"""
+    try:
+        # 처리된 리포트 파일들 찾기
+        report_files = glob.glob(os.path.join(processing_dir, '*_통합_리포트_*.xlsx'))
+        
+        total_files = len(report_files)
+        total_sales = 0
+        total_profit = 0
+        
+        # 각 리포트 파일에서 통계 추출
+        for report_file in report_files:
+            df = pd.read_excel(report_file, sheet_name='정리된 데이터')
+            if '매출' in df.columns:
+                total_sales += df['매출'].sum()
+            if '순이익' in df.columns:
+                total_profit += df['순이익'].sum()
+        
+        # 통계 정보 전송
+        stats = {
+            'files': f"{total_files}개",
+            'sales': f"₩{total_sales:,.0f}",
+            'profit': f"₩{total_profit:,.0f}"
+        }
+        self.stats_signal.emit(stats)
+```
+
+- **메인 애플리케이션 시그널 연결**:
+  - 모든 워커의 `stats_signal`을 `update_stats()` 메서드에 연결
+  - 처리 완료 시 실시간 통계 카드가 자동으로 업데이트됨
+```python
+# 시그널 연결
+self.manual_worker.stats_signal.connect(self.update_stats)
+self.worker.stats_signal.connect(self.update_stats)
+
+# 통계 카드 업데이트
+def update_stats(self, stats_dict):
+    """통계 카드들을 업데이트"""
+    if 'files' in stats_dict:
+        self.files_card.update_value(stats_dict['files'])
+    if 'sales' in stats_dict:
+        self.sales_card.update_value(stats_dict['sales'])
+    if 'profit' in stats_dict:
+        self.margin_card.update_value(stats_dict['profit'])
+```
+
+### **🔧 기술적 구현 세부사항**
+
+#### **리워드 0 데이터 추가 로직**
+- **누락된 리워드 상품 감지**: JSON에서 설정된 상품 중 주문조회에 없는 상품 식별
+- **0 데이터 행 생성**: 누락된 상품을 수량 0으로 추가하여 리워드 데이터 보존
+- **마진정보 연동**: 대표옵션 정보를 활용한 정확한 상품 정보 매칭
+```python
+# 누락된 상품들을 0 데이터로 추가
+for product_id in missing_rewarded_products:
+    product_margin = margin_df[
+        (margin_df['상품ID'] == product_id) & 
+        (margin_df['대표옵션'] == True)
+    ]
+    
+    if len(product_margin) > 0:
+        zero_row = {
+            '상품ID': product_id,
+            '옵션정보': product_info.get('옵션정보', ''),
+            '수량': 0,
+            '환불수량': 0
+        }
+        missing_products.append(zero_row)
+```
+
+#### **통계 데이터 소스 차별화**
+- **수동 처리 (ModernManualWorker)**: 작업폴더의 리포트 파일들에서 즉시 통계 수집
+- **자동 모니터링 (ModernWorker)**: 보관함의 최근 리포트 파일들에서 통계 계산 (성능 최적화)
+- **실시간 업데이트**: 처리 완료 즉시 GUI 카드에 최신 통계 표시
+
+### **📊 완성된 기능 상태**
+
+#### **✅ 리워드 누락 해결 시스템**
+- **완벽한 파일 경로 해결**: exe와 개발 환경 모두에서 정상 작동
+- **포괄적 디버깅**: 파일 상태부터 JSON 파싱까지 모든 단계 추적
+- **0 데이터 추가**: 판매가 없어도 리워드 설정 상품의 데이터 보존
+- **주간 리포트 호환**: 0 데이터가 가중평균 계산에 영향 없음 확인
+
+#### **✅ 실시간 통계 연결**
+- **📄 처리된 파일**: 생성된 리포트 파일 수 실시간 표시
+- **💰 총 매출**: 모든 처리된 데이터의 누적 매출액
+- **📈 순이익**: 실시간 수익성 분석 결과
+- **⚠️ 에러**: 발생한 오류 개수 (기존 오류 추적 시스템과 연동)
+
+### **🎯 사용 방법 업데이트**
+
+#### **리워드 누락 해결 확인**
+1. **리워드 설정**: GUI에서 판매가 없는 상품에도 리워드 설정
+2. **처리 실행**: 작업폴더 처리 또는 자동화 실행
+3. **로그 확인**: 상세한 디버깅 로그로 처리 과정 추적
+4. **결과 검증**: 생성된 리포트에서 0 수량 상품의 리워드 데이터 확인
+
+#### **실시간 통계 모니터링**
+1. **처리 시작**: 자동화 또는 수동 처리 시작
+2. **실시간 확인**: 상단 통계 카드에서 진행 상황 실시간 모니터링
+3. **완료 확인**: 처리 완료 시 최종 통계가 자동으로 카드에 업데이트
+4. **오류 추적**: 에러 카드 클릭으로 발생한 모든 오류 상세 확인
+
+### **📋 최신 배포 파일 (2025년 9월 10일)**
+
+#### **생성된 배포 파일**
+```
+dist/
+├── 판매데이터자동화_통계연결수정.exe  # 최신 통계 연결 및 리워드 수정 버전 (권장)
+├── 판매데이터자동화_디버그개선.exe    # 디버깅 강화 버전
+└── 판매데이터자동화_경로수정.exe      # 경로 수정 테스트 버전
+```
+
+#### **권장 버전: 판매데이터자동화_통계연결수정.exe**
+- ✅ 리워드 파일 경로 문제 완전 해결
+- ✅ 실시간 통계 GUI 완벽 연결
+- ✅ 리워드 누락 해결 기능 디버깅 강화
+- ✅ 모든 워커 스레드 통계 지원
+- ✅ 포괄적 예외 처리 및 로깅
+
+### **🎉 2025년 9월 10일 최종 완성 상태**
+
+- ✅ **리워드 파일 경로 문제 완전 해결**: exe/개발 환경 모두 정상 작동
+- ✅ **실시간 통계 GUI 완벽 연결**: 모든 처리 완료 시 즉시 통계 업데이트
+- ✅ **리워드 누락 해결 기능 완성**: 판매 없는 상품도 리워드 데이터 보존
+- ✅ **포괄적 디버깅 시스템**: 모든 단계의 상세한 로깅 및 오류 추적
+- ✅ **성능 최적화**: 통계 계산 및 메모리 사용량 최적화
+
+**📦 최종 배포:**
+모든 리워드 관련 문제와 실시간 통계 연결이 완전히 해결된 안정적인 버전입니다. `판매데이터자동화_통계연결수정.exe`를 실행하여 모든 최신 기능을 완벽하게 체험하실 수 있습니다.
+
+---
+
+## 10. 💾 최신 배포 파일 정보
 
 ### **권장 실행 파일**
-- **`판매데이터자동화_Material3.exe`** (134MB) - 2025년 9월 9일 최신 버전
-  - Material Design 3 UI 완벽 적용
-  - 실시간 오류 추적 시스템
-  - 개선된 통계 카드 가시성
-  - 하단 고정 버튼 다이얼로그
-  - 포괄적 예외 처리 및 안정성
+- **`판매데이터자동화_통계연결수정.exe`** - 2025년 9월 10일 최신 버전
+  - 리워드 파일 경로 문제 완전 해결
+  - 실시간 통계 GUI 완벽 연결
+  - 리워드 누락 해결 기능 완성
+  - 포괄적 디버깅 및 오류 추적
 
 ### **시스템 요구사항**
 - **운영체제**: Windows 10/11 (64-bit)

@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QSpinBox, QFrame, QProgressBar, QCheckBox, QScrollArea,
     QGraphicsDropShadowEffect, QSizePolicy, QDialogButtonBox
 )
-from PySide6.QtCore import QThread, Signal, Qt, QDate, QTimer
+from PySide6.QtCore import QThread, Signal, Qt, QDate, QTimer, QSettings
 from PySide6.QtGui import QColor, QIcon, QCursor
 
 # Try to import qtawesome for icons
@@ -149,6 +149,7 @@ class ModernWorker(QThread):
     output_signal = Signal(str)
     finished_signal = Signal()
     error_signal = Signal(str)
+    stats_signal = Signal(dict)  # 통계 업데이트 시그널 추가
 
     def __init__(self, download_folder, password="1234"):
         super().__init__()
@@ -161,15 +162,61 @@ class ModernWorker(QThread):
             config.ORDER_FILE_PASSWORD = self.password
             self.output_signal.emit("[INFO] 자동화 시작!")
             file_handler.start_monitoring()
+            
+            # 모니터링이 완료되면 통계 수집
+            self.collect_and_send_stats()
+            
         except Exception as e:
             self.error_signal.emit(f"[ERROR] 모니터링 중 오류: {str(e)}")
         finally:
             self.finished_signal.emit()
 
+    def collect_and_send_stats(self):
+        """통계 정보를 수집해서 시그널로 전송"""
+        try:
+            import glob
+            import pandas as pd
+            
+            # 처리된 리포트 파일들 찾기 (보관함에서)
+            archive_dir = config.get_report_archive_dir()
+            if not os.path.exists(archive_dir):
+                return
+                
+            report_files = glob.glob(os.path.join(archive_dir, '*_통합_리포트_*.xlsx'))
+            
+            total_files = len(report_files)
+            total_sales = 0
+            total_profit = 0
+            
+            # 최근 파일들만 읽어서 통계 계산 (성능을 위해 최근 10개만)
+            recent_files = sorted(report_files, key=os.path.getmtime, reverse=True)[:10]
+            
+            for report_file in recent_files:
+                try:
+                    df = pd.read_excel(report_file, sheet_name='정리된 데이터')
+                    if '매출' in df.columns:
+                        total_sales += df['매출'].sum()
+                    if '순이익' in df.columns:
+                        total_profit += df['순이익'].sum()
+                except Exception:
+                    continue
+            
+            # 통계 정보 전송
+            stats = {
+                'files': f"{total_files}개",
+                'sales': f"₩{total_sales:,.0f}",
+                'profit': f"₩{total_profit:,.0f}"
+            }
+            self.stats_signal.emit(stats)
+            
+        except Exception as e:
+            self.output_signal.emit(f"[DEBUG] 통계 수집 중 오류: {e}")
+
 class ModernManualWorker(QThread):
     output_signal = Signal(str)
     finished_signal = Signal()
     error_signal = Signal(str)  # 오류 전용 시그널 추가
+    stats_signal = Signal(dict)  # 통계 업데이트 시그널 추가
     
     def __init__(self, download_folder, password="1234"):
         super().__init__()
@@ -180,20 +227,78 @@ class ModernManualWorker(QThread):
         try:
             config.DOWNLOAD_DIR = self.download_folder
             config.ORDER_FILE_PASSWORD = self.password
-            self.output_signal.emit("[INFO] 작업폴더 수동 처리 시작...")
-            file_handler.process_existing_files()
-            self.output_signal.emit("[INFO] 작업폴더 처리 완료!")
+            self.output_signal.emit("[INFO] 🔄 작업폴더 수동 처리 시작...")
+            
+            # 1단계: 작업폴더에 있는 파일들로 개별 리포트 생성
+            self.output_signal.emit("[INFO] 📊 1단계: 작업폴더 파일들로 개별 리포트 생성 중...")
+            from modules import report_generator
+            processed_groups = report_generator.generate_individual_reports()
+            
+            if processed_groups:
+                self.output_signal.emit(f"[INFO] ✅ 1단계 완료: {len(processed_groups)}개 그룹 처리됨")
+            else:
+                self.output_signal.emit("[INFO] ⚠️ 1단계: 처리할 파일이 없거나 리포트 생성 실패")
+            
+            # 2단계: 최종 통합 처리 (일일/주간 리포트 생성 및 파일 정리)
+            self.output_signal.emit("[INFO] 🏁 2단계: 최종 통합 처리 중...")
+            file_handler.finalize_all_processing()
+            self.output_signal.emit("[INFO] ✅ 2단계: 최종 통합 처리 완료")
+            
+            self.output_signal.emit("[INFO] 🎯 작업폴더 처리 완료!")
+            
+            # 통계 정보 수집 및 전송
+            self.collect_and_send_stats()
+            
         except Exception as e:
             error_msg = f"[ERROR] 수동 처리 중 오류: {str(e)}"
             self.output_signal.emit(error_msg)
             self.error_signal.emit(error_msg)  # 오류 시그널 발생
+            import traceback
+            self.output_signal.emit(f"[DEBUG] 상세 오류: {traceback.format_exc()}")
         finally:
             self.finished_signal.emit()
+
+    def collect_and_send_stats(self):
+        """통계 정보를 수집해서 시그널로 전송"""
+        try:
+            import glob
+            import pandas as pd
+            
+            # 처리된 리포트 파일들 찾기
+            processing_dir = config.get_processing_dir()
+            report_files = glob.glob(os.path.join(processing_dir, '*_통합_리포트_*.xlsx'))
+            
+            total_files = len(report_files)
+            total_sales = 0
+            total_profit = 0
+            
+            # 각 리포트 파일에서 통계 추출
+            for report_file in report_files:
+                try:
+                    df = pd.read_excel(report_file, sheet_name='정리된 데이터')
+                    if '매출' in df.columns:
+                        total_sales += df['매출'].sum()
+                    if '순이익' in df.columns:
+                        total_profit += df['순이익'].sum()
+                except Exception:
+                    continue
+            
+            # 통계 정보 전송
+            stats = {
+                'files': f"{total_files}개",
+                'sales': f"₩{total_sales:,.0f}",
+                'profit': f"₩{total_profit:,.0f}"
+            }
+            self.stats_signal.emit(stats)
+            
+        except Exception as e:
+            self.output_signal.emit(f"[DEBUG] 통계 수집 중 오류: {e}")
 
 class WeeklyWorker(QThread):
     output_signal = Signal(str)
     finished_signal = Signal()
     error_signal = Signal(str)  # 오류 전용 시그널 추가
+    stats_signal = Signal(dict)  # 통계 업데이트 시그널 추가
 
     def __init__(self, start_date, end_date, download_folder):
         super().__init__()
@@ -455,11 +560,15 @@ class ModernRewardDialog(QDialog):
         self.all_rewards_data = {'rewards': []}
         self.products_df = pd.DataFrame()
 
+        # 초기화 완료 플래그
+        self._initialization_complete = False
+
         self.initUI()
         self.load_data_sources()
-        
-        # UI가 완전히 생성된 후 데이터 로드
-        QTimer.singleShot(100, lambda: self.load_rewards_for_date(QDate.currentDate()))
+        # 초기화 완료 플래그 설정
+        self._initialization_complete = True
+        # 초기 데이터 로드
+        self.load_initial_data()
 
     def initUI(self):
         main_layout = QVBoxLayout(self)
@@ -608,6 +717,11 @@ class ModernRewardDialog(QDialog):
         
         # 하단 고정 버튼 위젯을 메인 레이아웃에 추가
         main_layout.addWidget(button_widget)
+    
+    def load_initial_data(self):
+        """UI 완성 후 초기 데이터 로드"""
+        if hasattr(self, '_initialization_complete') and self._initialization_complete:
+            self.load_rewards_for_date(QDate.currentDate())
 
     def load_data_sources(self):
         try:
@@ -625,9 +739,53 @@ class ModernRewardDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "오류", f"데이터 소스 로드 오류: {e}")
 
+    def normalize_product_id(self, product_id):
+        """product_id 정규화 (.0 제거)"""
+        product_id_str = str(product_id)
+        if product_id_str.endswith('.0'):
+            return product_id_str[:-2]
+        return product_id_str
+    
+    def find_reward_value(self, product_id, reward_map):
+        """product_id에 대한 리워드 값 찾기 (.0 있는 버전과 없는 버전 모두 확인)"""
+        clean_id = self.normalize_product_id(product_id)
+        dotted_id = clean_id + '.0'
+        
+        # 깨끗한 ID 먼저 확인, 없으면 .0 버전 확인
+        return reward_map.get(clean_id, reward_map.get(dotted_id, 0))
+    
+    def clear_table_widgets(self):
+        """테이블 위젯들을 안전하게 정리"""
+        try:
+            for row in range(self.reward_table.rowCount()):
+                # 체크박스 정리
+                checkbox = self.reward_table.cellWidget(row, 0)
+                if checkbox:
+                    checkbox.deleteLater()
+                # 스핀박스 정리
+                spinbox = self.reward_table.cellWidget(row, 3)
+                if spinbox:
+                    spinbox.deleteLater()
+            
+            # 테이블 내용 클리어
+            self.reward_table.clearContents()
+        except Exception as e:
+            import logging
+            logging.error(f"리워드 테이블 위젯 정리 중 오류: {e}")
+
     def load_rewards_for_date(self, q_date):
         target_date_str = q_date.toString("yyyy-MM-dd")
-        reward_map = {str(e['product_id']): e['reward'] for e in self.all_rewards_data.get('rewards', []) if e.get('start_date') == target_date_str}
+        
+        # 기존 위젯들 정리
+        self.clear_table_widgets()
+        
+        # 모든 형식의 product_id를 포함하는 reward_map 생성
+        reward_map = {}
+        for e in self.all_rewards_data.get('rewards', []):
+            if e.get('start_date') == target_date_str:
+                product_id = str(e['product_id'])
+                reward_map[product_id] = e['reward']
+        
         self.reward_table.setRowCount(len(self.products_df))
         
         for row, (_, product) in enumerate(self.products_df.iterrows()):
@@ -646,7 +804,9 @@ class ModernRewardDialog(QDialog):
             spinbox.setRange(0, 999999)
             spinbox.setSingleStep(1000)  # 1000원 단위로 증감
             spinbox.setSuffix(" 원")
-            spinbox.setValue(reward_map.get(product_id, 0))
+            # 호환성을 위해 두 형식 모두 확인
+            reward_value = self.find_reward_value(product_id, reward_map)
+            spinbox.setValue(reward_value)
             # 기본 스타일만 적용 (가구매 관리처럼)
             spinbox.setMinimumHeight(28)
             self.reward_table.setCellWidget(row, 3, spinbox)
@@ -656,41 +816,83 @@ class ModernRewardDialog(QDialog):
 
     def copy_rewards(self):
         source_date_str = self.source_date_edit.date().toString("yyyy-MM-dd")
-        reward_map = {str(e['product_id']): e['reward'] for e in self.all_rewards_data.get('rewards', []) if e.get('start_date') == source_date_str}
+        reward_map = {}
+        
+        # 리워드 데이터에서 해당 날짜 설정 찾기
+        for entry in self.all_rewards_data.get('rewards', []):
+            if entry.get('start_date') == source_date_str:
+                product_id = str(entry['product_id'])
+                reward_map[product_id] = entry['reward']
+        
         if not reward_map:
-            QMessageBox.information(self, "알림", f"{source_date_str}에 저장된 설정이 없습니다.")
+            QMessageBox.information(self, "알림", f"{source_date_str}에 저장된 리워드 설정이 없습니다.")
             return
+            
+        # 현재 테이블에 적용
+        applied_count = 0
         for row in range(self.reward_table.rowCount()):
-            product_id = self.reward_table.item(row, 1).text()
+            product_id_item = self.reward_table.item(row, 1)
             spinbox = self.reward_table.cellWidget(row, 3)
-            if spinbox and product_id in reward_map:
-                spinbox.setValue(reward_map[product_id])
+            if product_id_item and spinbox:
+                product_id = product_id_item.text()
+                # 호환성을 위해 두 형식 모두 확인
+                reward_value = self.find_reward_value(product_id, reward_map)
+                if reward_value > 0:  # 리워드 값이 있는 경우만 적용
+                    spinbox.setValue(reward_value)
+                    applied_count += 1
+        
+        QMessageBox.information(self, "복사 완료", f"{applied_count}개 상품의 리워드 설정을 복사했습니다.")
 
     def toggle_all_selection(self):
         is_checked = self.select_all_checkbox.isChecked()
         for row in range(self.reward_table.rowCount()):
             if not self.reward_table.isRowHidden(row):
-                self.reward_table.cellWidget(row, 0).setChecked(is_checked)
+                checkbox = self.reward_table.cellWidget(row, 0)
+                if checkbox:
+                    checkbox.setChecked(is_checked)
+        self.update_selected_count()
 
     def apply_to_selected(self):
-        bulk_value = self.bulk_reward.value()
-        for row in range(self.reward_table.rowCount()):
-            if self.reward_table.cellWidget(row, 0).isChecked():
-                self.reward_table.cellWidget(row, 3).setValue(bulk_value)
+        """선택된 항목에 일괄 적용 (예외 처리 강화)"""
+        try:
+            bulk_value = self.bulk_reward.value()
+            applied_count = 0
+            for row in range(self.reward_table.rowCount()):
+                checkbox = self.reward_table.cellWidget(row, 0)
+                spinbox = self.reward_table.cellWidget(row, 3)
+                if checkbox and checkbox.isChecked() and spinbox:
+                    spinbox.setValue(bulk_value)
+                    applied_count += 1
+            
+            if applied_count > 0:
+                QMessageBox.information(self, "적용 완료", f"{applied_count}개 상품에 {bulk_value}원 리워드를 적용했습니다.")
+            else:
+                QMessageBox.warning(self, "선택 없음", "적용할 상품을 먼저 선택해주세요.")
+        except Exception as e:
+            import logging
+            logging.error(f"리워드 일괄 적용 중 오류: {e}")
+            QMessageBox.critical(self, "오류", f"일괄 적용 중 오류가 발생했습니다:\n{str(e)}")
 
     def update_selected_count(self):
-        selected_count = 0
-        for row in range(self.reward_table.rowCount()):
-            if not self.reward_table.isRowHidden(row):
-                checkbox = self.reward_table.cellWidget(row, 0)
-                if checkbox and checkbox.isChecked():
-                    selected_count += 1
-        
-        if hasattr(self, 'selected_count_label'):
-            self.selected_count_label.setText(f"선택됨: {selected_count}개")
-        
-        if hasattr(self, 'apply_selected_button'):
-            self.apply_selected_button.setEnabled(selected_count > 0)
+        """선택된 항목 수 업데이트 (예외 처리 강화)"""
+        try:
+            selected_count = 0
+            for row in range(self.reward_table.rowCount()):
+                if not self.reward_table.isRowHidden(row):
+                    checkbox = self.reward_table.cellWidget(row, 0)
+                    if checkbox and checkbox.isChecked():
+                        selected_count += 1
+            
+            if hasattr(self, 'selected_count_label'):
+                self.selected_count_label.setText(f"선택됨: {selected_count}개")
+            
+            if hasattr(self, 'apply_selected_button'):
+                self.apply_selected_button.setEnabled(selected_count > 0)
+        except Exception as e:
+            import logging
+            logging.error(f"리워드 선택 개수 업데이트 중 오류: {e}")
+            if hasattr(self, 'selected_count_label'):
+                self.selected_count_label.setText("선택됨: 오류")
 
     def filter_products(self):
         search_text = self.search_box.text().lower()
@@ -777,11 +979,15 @@ class PurchaseManagerDialog(QDialog):
         self.all_purchases_data = {'purchases': []}
         self.products_df = pd.DataFrame()
 
+        # 초기화 완료 플래그
+        self._initialization_complete = False
+
         self.initUI()
         self.load_data_sources()
-        
-        # UI가 완전히 생성된 후 데이터 로드 (PySide6 모범 사례)
-        QTimer.singleShot(100, lambda: self.load_purchases_for_date(QDate.currentDate()))
+        # 초기화 완료 플래그 설정
+        self._initialization_complete = True
+        # 초기 데이터 로드
+        self.load_initial_data()
 
     def initUI(self):
         main_layout = QVBoxLayout(self)
@@ -923,6 +1129,11 @@ class PurchaseManagerDialog(QDialog):
         
         # 하단 고정 버튼 위젯을 메인 레이아웃에 추가
         main_layout.addWidget(button_widget)
+    
+    def load_initial_data(self):
+        """UI 완성 후 초기 데이터 로드"""
+        if hasattr(self, '_initialization_complete') and self._initialization_complete:
+            self.load_purchases_for_date(QDate.currentDate())
 
     def load_data_sources(self):
         try:
@@ -940,9 +1151,53 @@ class PurchaseManagerDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "오류", f"데이터 소스 로드 오류: {e}")
 
+    def normalize_product_id(self, product_id):
+        """product_id 정규화 (.0 제거)"""
+        product_id_str = str(product_id)
+        if product_id_str.endswith('.0'):
+            return product_id_str[:-2]
+        return product_id_str
+
+    def find_purchase_value(self, product_id, purchase_map):
+        """product_id에 대한 가구매 값 찾기 (.0 있는 버전과 없는 버전 모두 확인)"""
+        clean_id = self.normalize_product_id(product_id)
+        dotted_id = clean_id + '.0'
+        
+        # 깨끗한 ID 먼저 확인, 없으면 .0 버전 확인
+        return purchase_map.get(clean_id, purchase_map.get(dotted_id, 0))
+    
+    def clear_table_widgets(self):
+        """테이블 위젯들을 안전하게 정리"""
+        try:
+            for row in range(self.product_table.rowCount()):
+                # 체크박스 정리
+                checkbox = self.product_table.cellWidget(row, 0)
+                if checkbox:
+                    checkbox.deleteLater()
+                # 스핀박스 정리
+                spinbox = self.product_table.cellWidget(row, 3)
+                if spinbox:
+                    spinbox.deleteLater()
+            
+            # 테이블 내용 클리어
+            self.product_table.clearContents()
+        except Exception as e:
+            import logging
+            logging.error(f"가구매 테이블 위젯 정리 중 오류: {e}")
+
     def load_purchases_for_date(self, q_date):
         target_date_str = q_date.toString("yyyy-MM-dd")
-        purchase_map = {str(e['product_id']): e['purchase_count'] for e in self.all_purchases_data.get('purchases', []) if e.get('start_date') == target_date_str}
+        
+        # 기존 위젯들 정리
+        self.clear_table_widgets()
+        
+        # 모든 형식의 product_id를 포함하는 purchase_map 생성
+        purchase_map = {}
+        for e in self.all_purchases_data.get('purchases', []):
+            if e.get('start_date') == target_date_str:
+                product_id = str(e['product_id'])
+                purchase_map[product_id] = e['purchase_count']
+        
         self.product_table.setRowCount(len(self.products_df))
         
         for row, (_, product) in enumerate(self.products_df.iterrows()):
@@ -960,7 +1215,9 @@ class PurchaseManagerDialog(QDialog):
             spinbox = QSpinBox()
             spinbox.setRange(0, 9999)
             spinbox.setSuffix(" 개")
-            spinbox.setValue(purchase_map.get(product_id, 0))
+            # 호환성을 위해 두 형식 모두 확인
+            purchase_value = self.find_purchase_value(product_id, purchase_map)
+            spinbox.setValue(purchase_value)
             self.product_table.setCellWidget(row, 3, spinbox)
         
         self.filter_products()
@@ -968,46 +1225,87 @@ class PurchaseManagerDialog(QDialog):
 
     def copy_purchases(self):
         source_date_str = self.source_date_edit.date().toString("yyyy-MM-dd")
-        purchase_map = {str(e['product_id']): e['purchase_count'] for e in self.all_purchases_data.get('purchases', []) if e.get('start_date') == source_date_str}
+        purchase_map = {}
+        
+        # 가구매 데이터에서 해당 날짜 설정 찾기
+        for entry in self.all_purchases_data.get('purchases', []):
+            if entry.get('start_date') == source_date_str:
+                product_id = str(entry['product_id'])
+                purchase_map[product_id] = entry['purchase_count']
+        
         if not purchase_map:
-            QMessageBox.information(self, "알림", f"{source_date_str}에 저장된 설정이 없습니다.")
+            QMessageBox.information(self, "알림", f"{source_date_str}에 저장된 가구매 설정이 없습니다.")
             return
+            
+        # 현재 테이블에 적용
+        applied_count = 0
         for row in range(self.product_table.rowCount()):
-            product_id = self.product_table.item(row, 1).text()
+            product_id_item = self.product_table.item(row, 1)
             spinbox = self.product_table.cellWidget(row, 3)
-            if spinbox and product_id in purchase_map:
-                spinbox.setValue(purchase_map[product_id])
+            if product_id_item and spinbox:
+                product_id = product_id_item.text()
+                # 호환성을 위해 두 형식 모두 확인
+                purchase_value = self.find_purchase_value(product_id, purchase_map)
+                if purchase_value > 0:  # 가구매 값이 있는 경우만 적용
+                    spinbox.setValue(purchase_value)
+                    applied_count += 1
+        
+        QMessageBox.information(self, "복사 완료", f"{applied_count}개 상품의 가구매 설정을 복사했습니다.")
 
     def toggle_all_selection(self):
         is_checked = self.select_all_checkbox.isChecked()
         for row in range(self.product_table.rowCount()):
             if not self.product_table.isRowHidden(row):
-                self.product_table.cellWidget(row, 0).setChecked(is_checked)
+                checkbox = self.product_table.cellWidget(row, 0)
+                if checkbox:
+                    checkbox.setChecked(is_checked)
+        self.update_selected_count()
 
     def apply_to_selected(self):
-        bulk_value = self.bulk_purchase.value()
-        for row in range(self.product_table.rowCount()):
-            if self.product_table.cellWidget(row, 0).isChecked():
-                self.product_table.cellWidget(row, 3).setValue(bulk_value)
+        """선택된 항목에 일괄 적용 (예외 처리 강화)"""
+        try:
+            bulk_value = self.bulk_purchase.value()
+            applied_count = 0
+            for row in range(self.product_table.rowCount()):
+                checkbox = self.product_table.cellWidget(row, 0)
+                spinbox = self.product_table.cellWidget(row, 3)
+                if checkbox and checkbox.isChecked() and spinbox:
+                    spinbox.setValue(bulk_value)
+                    applied_count += 1
+            
+            if applied_count > 0:
+                QMessageBox.information(self, "적용 완료", f"{applied_count}개 상품에 {bulk_value}개 가구매를 적용했습니다.")
+            else:
+                QMessageBox.warning(self, "선택 없음", "적용할 상품을 먼저 선택해주세요.")
+        except Exception as e:
+            import logging
+            logging.error(f"가구매 일괄 적용 중 오류: {e}")
+            QMessageBox.critical(self, "오류", f"일괄 적용 중 오류가 발생했습니다:\n{str(e)}")
 
     def update_selected_count(self):
-        """선택된 항목 수 업데이트"""
-        selected_count = 0
-        total_visible = 0
-        
-        for row in range(self.product_table.rowCount()):
-            if not self.product_table.isRowHidden(row):
-                total_visible += 1
-                checkbox = self.product_table.cellWidget(row, 0)
-                if checkbox and checkbox.isChecked():
-                    selected_count += 1
-        
-        if hasattr(self, 'selected_count_label'):
-            self.selected_count_label.setText(f"선택됨: {selected_count}개")
-        
-        # 적용 버튼 활성화 상태 업데이트
-        if hasattr(self, 'apply_selected_button'):
-            self.apply_selected_button.setEnabled(selected_count > 0)
+        """선택된 항목 수 업데이트 (예외 처리 강화)"""
+        try:
+            selected_count = 0
+            total_visible = 0
+            
+            for row in range(self.product_table.rowCount()):
+                if not self.product_table.isRowHidden(row):
+                    total_visible += 1
+                    checkbox = self.product_table.cellWidget(row, 0)
+                    if checkbox and checkbox.isChecked():
+                        selected_count += 1
+            
+            if hasattr(self, 'selected_count_label'):
+                self.selected_count_label.setText(f"선택됨: {selected_count}개")
+            
+            # 적용 버튼 활성화 상태 업데이트
+            if hasattr(self, 'apply_selected_button'):
+                self.apply_selected_button.setEnabled(selected_count > 0)
+        except Exception as e:
+            import logging
+            logging.error(f"가구매 선택 개수 업데이트 중 오류: {e}")
+            if hasattr(self, 'selected_count_label'):
+                self.selected_count_label.setText("선택됨: 오류")
 
     def filter_products(self):
         search_text = self.search_box.text().lower()
@@ -1050,6 +1348,7 @@ class ModernSalesAutomationApp(QMainWindow):
         
         self.init_ui()
         self.setup_logging()
+        self.load_settings()
 
     def init_ui(self):
         self.setWindowTitle("📊 판매 데이터 자동화")
@@ -1174,6 +1473,7 @@ class ModernSalesAutomationApp(QMainWindow):
         self.worker.output_signal.connect(self.update_log)
         self.worker.finished_signal.connect(self.on_monitoring_finished)
         self.worker.error_signal.connect(self.on_error)
+        self.worker.stats_signal.connect(self.update_stats)  # 통계 시그널 연결
         self.worker.start()
 
     def stop_monitoring(self):
@@ -1196,6 +1496,7 @@ class ModernSalesAutomationApp(QMainWindow):
         self.manual_worker.output_signal.connect(self.update_log)
         self.manual_worker.error_signal.connect(self.on_error)  # 오류 시그널 연결
         self.manual_worker.finished_signal.connect(self.on_manual_finished)
+        self.manual_worker.stats_signal.connect(self.update_stats)  # 통계 시그널 연결
         self.manual_worker.start()
 
     def show_reward_dialog(self):
@@ -1236,6 +1537,18 @@ class ModernSalesAutomationApp(QMainWindow):
     def on_weekly_report_finished(self):
         self.set_controls_enabled(True)
         self.update_log("[INFO] ✅ 주간 리포트 생성이 완료되었습니다.")
+
+    def update_stats(self, stats_dict):
+        """통계 카드들을 업데이트"""
+        try:
+            if 'files' in stats_dict:
+                self.files_card.update_value(stats_dict['files'])
+            if 'sales' in stats_dict:
+                self.sales_card.update_value(stats_dict['sales'])
+            if 'profit' in stats_dict:
+                self.margin_card.update_value(stats_dict['profit'])
+        except Exception as e:
+            self.update_log(f"[DEBUG] 통계 업데이트 중 오류: {e}")
 
     def on_error(self, msg):
         self.update_log(msg)
@@ -1292,6 +1605,106 @@ class ModernSalesAutomationApp(QMainWindow):
         self.reward_btn.setEnabled(enabled)
         self.purchase_btn.setEnabled(enabled)
         self.stop_btn.setEnabled(not enabled)
+    
+    def load_settings(self):
+        """애플리케이션 설정 로드"""
+        try:
+            settings = QSettings("SalesAutomation", "ModernSalesApp")
+            
+            # 창 위치 및 크기 복원
+            geometry = settings.value("geometry")
+            if geometry:
+                self.restoreGeometry(geometry)
+            
+            # 다운로드 폴더 경로 복원
+            folder_path = settings.value("download_folder", "")
+            if folder_path and os.path.exists(folder_path):
+                self.download_folder_path = folder_path
+                self.folder_label.setText(f"📁 {folder_path}")
+            
+            # 패스워드 복원 (보안상 저장하지 않음)
+            
+        except Exception as e:
+            import logging
+            logging.error(f"설정 로드 중 오류: {e}")
+    
+    def save_settings(self):
+        """애플리케이션 설정 저장"""
+        try:
+            settings = QSettings("SalesAutomation", "ModernSalesApp")
+            
+            # 창 위치 및 크기 저장
+            settings.setValue("geometry", self.saveGeometry())
+            
+            # 다운로드 폴더 경로 저장
+            if self.download_folder_path:
+                settings.setValue("download_folder", self.download_folder_path)
+            
+        except Exception as e:
+            import logging
+            logging.error(f"설정 저장 중 오류: {e}")
+    
+    def cleanup_workers(self):
+        """모든 워커 스레드 안전 정리"""
+        workers = [
+            ('worker', self.worker),
+            ('manual_worker', self.manual_worker), 
+            ('weekly_worker', self.weekly_worker)
+        ]
+        
+        for name, worker in workers:
+            if worker and worker.isRunning():
+                try:
+                    self.update_log(f"[INFO] {name} 스레드 종료 중...")
+                    worker.quit()
+                    if not worker.wait(3000):  # 3초 대기
+                        self.update_log(f"[WARNING] {name} 스레드 강제 종료")
+                        worker.terminate()
+                        worker.wait(1000)
+                    else:
+                        self.update_log(f"[INFO] {name} 스레드 정상 종료")
+                except Exception as e:
+                    self.update_log(f"[ERROR] {name} 스레드 정리 중 오류: {e}")
+    
+    def closeEvent(self, event):
+        """애플리케이션 종료 시 정리 작업"""
+        try:
+            # 실행 중인 작업이 있는지 확인
+            running_workers = []
+            if self.worker and self.worker.isRunning():
+                running_workers.append("자동 모니터링")
+            if self.manual_worker and self.manual_worker.isRunning():
+                running_workers.append("수동 처리")
+            if self.weekly_worker and self.weekly_worker.isRunning():
+                running_workers.append("주간 리포트")
+            
+            if running_workers:
+                reply = QMessageBox.question(
+                    self, 
+                    "작업 진행 중",
+                    f"다음 작업이 진행 중입니다:\n{', '.join(running_workers)}\n\n정말 종료하시겠습니까?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                
+                if reply != QMessageBox.Yes:
+                    event.ignore()
+                    return
+            
+            # 설정 저장
+            self.save_settings()
+            
+            # 워커 스레드 정리
+            self.cleanup_workers()
+            
+            # 부모 클래스의 closeEvent 호출
+            super().closeEvent(event)
+            
+        except Exception as e:
+            import logging
+            logging.error(f"애플리케이션 종료 중 오류: {e}")
+            # 오류가 있어도 종료 진행
+            super().closeEvent(event)
 
 def main():
     app = QApplication(sys.argv)
