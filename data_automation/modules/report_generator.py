@@ -7,7 +7,7 @@ import re
 import logging
 import io
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from . import config
 
 def normalize_product_id(value):
@@ -74,18 +74,98 @@ def read_protected_excel(file_path, password=None, **kwargs):
             logging.error("암호가 올바른지 확인하거나 Excel에서 수동으로 암호를 제거해보세요.")
             raise decrypt_error
 
-def get_reward_for_date_and_product(product_id, date_str):
-    """날짜와 상품ID에 해당하는 리워드 값 조회 (안전한 버전)"""
+# 전역 리워드 캐시
+_reward_cache = None
+_reward_cache_timestamp = None
+
+def _migrate_legacy_rewards(data):
+    """기존 리워드 설정을 옵션별 설정으로 자동 마이그레이션"""
+    try:
+        # 마진정보 파일 로드
+        margin_file = config.MARGIN_FILE
+        if not os.path.exists(margin_file):
+            return data
+        
+        margin_df = pd.read_excel(margin_file, engine='openpyxl')
+        margin_df = margin_df.rename(columns={'상품번호': '상품ID'})
+        
+        # 대표옵션을 boolean으로 변환
+        if '대표옵션' in margin_df.columns:
+            margin_df['대표옵션'] = margin_df['대표옵션'].astype(str).str.upper().isin(['O', 'Y', 'TRUE'])
+        
+        migrated_rewards = []
+        migration_count = 0
+        
+        for reward_entry in data.get('rewards', []):
+            # 이미 option_info가 있으면 그대로 유지
+            if 'option_info' in reward_entry:
+                migrated_rewards.append(reward_entry)
+                continue
+            
+            # 기존 형식이면 마이그레이션 수행
+            product_id = normalize_product_id(reward_entry.get('product_id', ''))
+            if not product_id:
+                continue
+            
+            # 해당 상품의 모든 대표옵션 찾기
+            rep_options = margin_df[
+                (margin_df['상품ID'].astype(str).apply(normalize_product_id) == product_id) & 
+                (margin_df['대표옵션'] == True)
+            ]
+            
+            if len(rep_options) == 0:
+                # 대표옵션이 없으면 빈 옵션정보로 저장
+                new_entry = reward_entry.copy()
+                new_entry['option_info'] = ''
+                migrated_rewards.append(new_entry)
+                migration_count += 1
+            else:
+                # 각 대표옵션별로 개별 엔트리 생성
+                for _, option_row in rep_options.iterrows():
+                    new_entry = reward_entry.copy()
+                    option_info = option_row.get('옵션정보', '')
+                    if pd.isna(option_info):
+                        option_info = ''
+                    new_entry['option_info'] = str(option_info)
+                    migrated_rewards.append(new_entry)
+                    migration_count += 1
+        
+        if migration_count > 0:
+            logging.info(f"리워드 설정 마이그레이션: {migration_count}개 엔트리 생성")
+            # 마이그레이션된 데이터를 파일에 저장
+            migrated_data = {'rewards': migrated_rewards}
+            reward_file = os.path.join(config.BASE_DIR, '리워드설정.json')
+            with open(reward_file, 'w', encoding='utf-8') as f:
+                json.dump(migrated_data, f, ensure_ascii=False, indent=2)
+            return migrated_data
+        
+        return data
+        
+    except Exception as e:
+        logging.warning(f"리워드 마이그레이션 실패: {e}")
+        return data
+
+def _load_reward_cache():
+    """리워드 설정을 딕셔너리로 로드하여 캐시 (자동 마이그레이션 포함)"""
+    global _reward_cache, _reward_cache_timestamp
+    
     try:
         reward_file = os.path.join(config.BASE_DIR, '리워드설정.json')
         
         # 파일 존재 확인
         if not os.path.exists(reward_file):
-            return 0
+            _reward_cache = {}
+            return
         
-        # 파일 크기 확인 (빈 파일 체크)
+        # 파일 수정 시간 확인 (캐시 무효화용)
+        file_timestamp = os.path.getmtime(reward_file)
+        if _reward_cache is not None and _reward_cache_timestamp == file_timestamp:
+            return  # 캐시 유효함
+        
+        # 파일 크기 확인
         if os.path.getsize(reward_file) == 0:
-            return 0
+            _reward_cache = {}
+            return
         
         # JSON 파일 읽기
         with open(reward_file, 'r', encoding='utf-8') as f:
@@ -93,26 +173,22 @@ def get_reward_for_date_and_product(product_id, date_str):
         
         # 데이터 구조 검증
         if not isinstance(data, dict) or 'rewards' not in data:
-            return 0
+            _reward_cache = {}
+            return
+        
+        # 자동 마이그레이션 수행
+        data = _migrate_legacy_rewards(data)
+        
+        # 마이그레이션 후 파일 타임스탬프 다시 확인
+        new_file_timestamp = os.path.getmtime(reward_file)
         
         rewards_list = data.get('rewards', [])
         if not isinstance(rewards_list, list):
-            return 0
+            _reward_cache = {}
+            return
         
-        # 날짜 파싱 (여러 형식 지원)
-        target_date = None
-        for date_format in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y/%m/%d']:
-            try:
-                target_date = datetime.strptime(date_str, date_format).date()
-                break
-            except ValueError:
-                continue
-        
-        if target_date is None:
-            logging.warning(f"날짜 형식을 파싱할 수 없습니다: {date_str}")
-            return 0
-        
-        # 해당 상품과 날짜에 맞는 리워드 찾기
+        # 효율적인 조회를 위한 딕셔너리 생성 (옵션 포함)
+        reward_map = {}
         for reward_entry in rewards_list:
             try:
                 # 필수 키 존재 확인
@@ -121,36 +197,135 @@ def get_reward_for_date_and_product(product_id, date_str):
                 
                 start_date = datetime.strptime(reward_entry['start_date'], '%Y-%m-%d').date()
                 end_date = datetime.strptime(reward_entry['end_date'], '%Y-%m-%d').date()
+                product_id = normalize_product_id(reward_entry['product_id'])
+                option_info = str(reward_entry.get('option_info', ''))
+                reward_value = reward_entry['reward']
                 
-                # 상품ID 정규화하여 비교 (JSON의 .0도 제거)
-                normalized_entry_id = normalize_product_id(reward_entry['product_id'])
-                normalized_target_id = normalize_product_id(product_id)
+                # 리워드 값이 숫자인지 확인
+                if not isinstance(reward_value, (int, float)) or reward_value < 0:
+                    continue
                 
-                logging.debug(f"리워드 비교: JSON ID='{normalized_entry_id}' vs 타겟 ID='{normalized_target_id}'")
-                
-                if (start_date <= target_date <= end_date and 
-                    normalized_entry_id == normalized_target_id):
-                    reward_value = reward_entry['reward']
-                    # 리워드 값이 숫자인지 확인
-                    if isinstance(reward_value, (int, float)) and reward_value >= 0:
-                        return int(reward_value)
-            except (ValueError, KeyError, TypeError) as e:
-                # 개별 엔트리 파싱 실패는 로그만 남기고 계속 진행
+                # 날짜 범위의 각 날짜별로 딕셔너리에 저장 (옵션 포함)
+                current_date = start_date
+                while current_date <= end_date:
+                    key = (current_date.strftime('%Y-%m-%d'), product_id, option_info)
+                    reward_map[key] = int(reward_value)
+                    current_date += timedelta(days=1)
+                    
+            except (ValueError, KeyError, TypeError):
                 continue
         
-        return 0  # 설정이 없으면 0
+        _reward_cache = reward_map
+        _reward_cache_timestamp = new_file_timestamp
+        logging.info(f"리워드 캐시 로드 완료: {len(reward_map)}개 엔트리 (옵션별)")
         
-    except FileNotFoundError:
-        return 0
-    except json.JSONDecodeError as e:
-        logging.warning(f"JSON 파일 형식 오류: {e}")
-        return 0
     except Exception as e:
-        logging.warning(f"리워드 조회 중 예상치 못한 오류: {e}")
+        logging.warning(f"리워드 캐시 로드 실패: {e}")
+        _reward_cache = {}
+
+def get_reward_for_date_and_product(product_id, date_str, option_info=''):
+    """날짜, 상품ID, 옵션정보에 해당하는 리워드 값 조회 (캐시 기반 고속 조회)"""
+    try:
+        # 캐시 로드 (필요시)
+        _load_reward_cache()
+        
+        # 날짜 정규화
+        target_date = None
+        for date_format in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y/%m/%d']:
+            try:
+                target_date = datetime.strptime(date_str, date_format).date().strftime('%Y-%m-%d')
+                break
+            except ValueError:
+                continue
+        
+        if target_date is None:
+            return 0
+        
+        # 상품ID 정규화
+        normalized_product_id = normalize_product_id(product_id)
+        
+        # 옵션정보 정규화 (NaN, None 처리)
+        if pd.isna(option_info) or option_info is None:
+            option_info = ''
+        option_info = str(option_info)
+        
+        # O(1) 딕셔너리 조회 (3-tuple 키: 날짜, 상품ID, 옵션정보)
+        key = (target_date, normalized_product_id, option_info)
+        return _reward_cache.get(key, 0)
+        
+    except Exception as e:
+        logging.warning(f"리워드 조회 오류: {e}")
         return 0
 
-def get_purchase_count_for_date_and_product(product_id, date_str):
-    """날짜와 상품ID에 해당하는 가구매 개수 조회 (리워드 방식과 동일)"""
+def _migrate_legacy_purchases(data):
+    """기존 가구매 설정을 옵션별 설정으로 자동 마이그레이션"""
+    try:
+        # 마진정보 파일 로드
+        margin_file = config.MARGIN_FILE
+        if not os.path.exists(margin_file):
+            return data
+        
+        margin_df = pd.read_excel(margin_file, engine='openpyxl')
+        margin_df = margin_df.rename(columns={'상품번호': '상품ID'})
+        
+        # 대표옵션을 boolean으로 변환
+        if '대표옵션' in margin_df.columns:
+            margin_df['대표옵션'] = margin_df['대표옵션'].astype(str).str.upper().isin(['O', 'Y', 'TRUE'])
+        
+        migrated_purchases = []
+        migration_count = 0
+        
+        for purchase_entry in data.get('purchases', []):
+            # 이미 option_info가 있으면 그대로 유지
+            if 'option_info' in purchase_entry:
+                migrated_purchases.append(purchase_entry)
+                continue
+            
+            # 기존 형식이면 마이그레이션 수행
+            product_id = normalize_product_id(purchase_entry.get('product_id', ''))
+            if not product_id:
+                continue
+            
+            # 해당 상품의 모든 대표옵션 찾기
+            rep_options = margin_df[
+                (margin_df['상품ID'].astype(str).apply(normalize_product_id) == product_id) & 
+                (margin_df['대표옵션'] == True)
+            ]
+            
+            if len(rep_options) == 0:
+                # 대표옵션이 없으면 빈 옵션정보로 저장
+                new_entry = purchase_entry.copy()
+                new_entry['option_info'] = ''
+                migrated_purchases.append(new_entry)
+                migration_count += 1
+            else:
+                # 각 대표옵션별로 개별 엔트리 생성
+                for _, option_row in rep_options.iterrows():
+                    new_entry = purchase_entry.copy()
+                    option_info = option_row.get('옵션정보', '')
+                    if pd.isna(option_info):
+                        option_info = ''
+                    new_entry['option_info'] = str(option_info)
+                    migrated_purchases.append(new_entry)
+                    migration_count += 1
+        
+        if migration_count > 0:
+            logging.info(f"가구매 설정 마이그레이션: {migration_count}개 엔트리 생성")
+            # 마이그레이션된 데이터를 파일에 저장
+            migrated_data = {'purchases': migrated_purchases}
+            purchase_file = os.path.join(config.BASE_DIR, '가구매설정.json')
+            with open(purchase_file, 'w', encoding='utf-8') as f:
+                json.dump(migrated_data, f, ensure_ascii=False, indent=2)
+            return migrated_data
+        
+        return data
+        
+    except Exception as e:
+        logging.warning(f"가구매 마이그레이션 실패: {e}")
+        return data
+
+def get_purchase_count_for_date_and_product(product_id, date_str, option_info=''):
+    """날짜, 상품ID, 옵션정보에 해당하는 가구매 개수 조회 (리워드 방식과 동일)"""
     try:
         purchase_file = os.path.join(config.BASE_DIR, '가구매설정.json')
         
@@ -170,6 +345,9 @@ def get_purchase_count_for_date_and_product(product_id, date_str):
         if not isinstance(data, dict) or 'purchases' not in data:
             return 0
         
+        # 자동 마이그레이션 수행
+        data = _migrate_legacy_purchases(data)
+        
         purchases_list = data.get('purchases', [])
         if not isinstance(purchases_list, list):
             return 0
@@ -187,22 +365,38 @@ def get_purchase_count_for_date_and_product(product_id, date_str):
             logging.warning(f"가구매 개수 조회: 날짜 형식을 파싱할 수 없습니다: {date_str}")
             return 0
         
-        # 해당 상품과 날짜에 맞는 가구매 개수 찾기
+        # 옵션정보 정규화 (NaN, None 처리)
+        if pd.isna(option_info) or option_info is None:
+            option_info = ''
+        option_info = str(option_info)
+        
+        # 해당 상품, 옵션, 날짜에 맞는 가구매 개수 찾기
         for purchase_entry in purchases_list:
             try:
                 # 필수 키 존재 확인
-                if not all(k in purchase_entry for k in ['start_date', 'end_date', 'product_id', 'purchase_count']):
+                if not all(k in purchase_entry for k in ['start_date', 'product_id', 'purchase_count']):
                     continue
                 
-                start_date = datetime.strptime(purchase_entry['start_date'], '%Y-%m-%d').date()
-                end_date = datetime.strptime(purchase_entry['end_date'], '%Y-%m-%d').date()
+                # 날짜 매칭 - start_date가 하루 단위인 경우 처리
+                if 'end_date' in purchase_entry:
+                    start_date = datetime.strptime(purchase_entry['start_date'], '%Y-%m-%d').date()
+                    end_date = datetime.strptime(purchase_entry['end_date'], '%Y-%m-%d').date()
+                    date_match = start_date <= target_date <= end_date
+                else:
+                    # 하루 단위 설정인 경우
+                    entry_date = datetime.strptime(purchase_entry['start_date'], '%Y-%m-%d').date()
+                    date_match = entry_date == target_date
                 
                 # 상품ID 정규화하여 비교
                 normalized_entry_id = normalize_product_id(purchase_entry['product_id'])
                 normalized_target_id = normalize_product_id(product_id)
                 
-                if (start_date <= target_date <= end_date and 
-                    normalized_entry_id == normalized_target_id):
+                # 옵션정보 매칭
+                entry_option = str(purchase_entry.get('option_info', ''))
+                
+                if (date_match and 
+                    normalized_entry_id == normalized_target_id and
+                    entry_option == option_info):
                     purchase_count = purchase_entry['purchase_count']
                     # 가구매 개수가 숫자인지 확인
                     if isinstance(purchase_count, (int, float)) and purchase_count >= 0:
@@ -341,6 +535,9 @@ def generate_individual_reports():
         logging.info(f"- {store} ({date}) 주문조회 기반 데이터 처리 시작...")
         
         try:
+            # 이 파일 처리를 위한 로컬 변수들 (다른 파일과 완전히 독립)
+            local_missing_products = []  # 이 파일에서만 사용되는 누락 상품 리스트
+            
             # 주문조회 파일 읽기 (암호 보호될 수 있음)
             order_path = os.path.join(config.get_processing_dir(), order_file)
             order_df = read_protected_excel(order_path, password=config.ORDER_FILE_PASSWORD)
@@ -468,7 +665,6 @@ def generate_individual_reports():
                 reward_file = os.path.join(config.BASE_DIR, '리워드설정.json')
                 logging.info(f"-> {store}({date}) 리워드 파일 경로: {reward_file}")
                 logging.info(f"-> {store}({date}) 리워드 파일 절대경로: {os.path.abspath(reward_file)}")
-                missing_products = []
                 
                 if os.path.exists(reward_file):
                     logging.info(f"-> {store}({date}) 리워드 파일 존재함, 파일 크기: {os.path.getsize(reward_file)} bytes")
@@ -498,56 +694,113 @@ def generate_individual_reports():
                     
                     # 해당 날짜에 리워드가 설정된 상품들 찾기
                     rewarded_products = set()
+                    original_to_normalized = {}  # 원본 ID -> 정규화 ID 매핑
                     for reward_entry in reward_data.get('rewards', []):
                         start_date = reward_entry.get('start_date', '')
                         end_date = reward_entry.get('end_date', '')
                         product_id = str(reward_entry.get('product_id', ''))
+                        reward_amount = reward_entry.get('reward', 0)
                         
-                        # 날짜 범위 체크 (날짜가 해당 범위에 포함되는지)
-                        if start_date <= date <= end_date and product_id:
-                            rewarded_products.add(product_id)
+                        # 유효한 리워드인지 체크: 날짜 범위, 상품ID, 리워드 금액 모두 확인
+                        if (start_date <= date <= end_date and 
+                            product_id and 
+                            product_id != 'nan' and 
+                            product_id != '' and
+                            reward_amount and 
+                            reward_amount > 0):
+                            # 상품ID 정규화하여 저장 (.0 제거)
+                            normalized_id = normalize_product_id(product_id)
+                            rewarded_products.add(normalized_id)
+                            original_to_normalized[product_id] = normalized_id
+                            logging.debug(f"-> {store}({date}) 유효한 리워드 상품 추가: {product_id} -> {normalized_id} (리워드: {reward_amount}원)")
                     
                     logging.info(f"-> {store}({date}) 리워드 설정된 상품들: {list(rewarded_products)}")
                     
-                    # 주문조회에 없는 리워드 설정 상품들 찾기
-                    existing_products = set(option_summary['상품ID'].astype(str))
-                    missing_rewarded_products = rewarded_products - existing_products
+                    # 마진정보에 스토어 컬럼이 있으면 해당 스토어 상품만 필터링
+                    if '스토어' in margin_df.columns:
+                        # 현재 스토어에서 판매하는 상품들만 추출 (정규화하여 저장)
+                        store_products = set(margin_df[margin_df['스토어'] == store]['상품ID'].astype(str).apply(normalize_product_id))
+                        logging.info(f"-> {store}({date}) {store} 스토어에서 판매하는 상품: {len(store_products)}개")
+                        
+                        # 리워드 설정된 상품 중 이 스토어에서 판매하는 상품만 체크
+                        store_rewarded_products = rewarded_products & store_products
+                        logging.info(f"-> {store}({date}) {store} 스토어에서 판매하는 리워드 설정 상품: {list(store_rewarded_products)}")
+                    else:
+                        # 스토어 컬럼이 없으면 기존 방식 사용 (모든 상품 체크)
+                        store_rewarded_products = rewarded_products
+                        logging.info(f"-> {store}({date}) 스토어 컬럼이 없어 모든 리워드 상품 체크")
+                    
+                    # 주문조회에 없는 리워드 설정 상품들 찾기 (스토어별로 필터링됨)
+                    # 기존 상품들도 정규화하여 비교
+                    existing_products = set(option_summary['상품ID'].astype(str).apply(normalize_product_id))
+                    missing_rewarded_products = store_rewarded_products - existing_products
                     
                     if missing_rewarded_products:
-                        logging.info(f"-> {store}({date}) 주문조회에 없는 리워드 설정 상품 {len(missing_rewarded_products)}개: {list(missing_rewarded_products)}")
+                        logging.info(f"-> {store}({date}) {store} 스토어에서 주문조회에 없는 리워드 설정 상품 {len(missing_rewarded_products)}개: {list(missing_rewarded_products)}")
                         
                         # 누락된 상품들을 0 데이터로 추가
-                        for product_id in missing_rewarded_products:
-                            # 마진정보에서 해당 상품의 대표옵션 찾기
-                            product_margin = margin_df[
-                                (margin_df['상품ID'] == product_id) & 
-                                (margin_df['대표옵션'] == True)
-                            ]
+                        for normalized_product_id in missing_rewarded_products:
+                            # 마진정보에서 정규화된 ID로 매칭하여 상품 정보 찾기
+                            margin_df_normalized = margin_df.copy()
+                            margin_df_normalized['정규화_상품ID'] = margin_df_normalized['상품ID'].astype(str).apply(normalize_product_id)
+                            # 대표옵션을 boolean으로 변환 (메인 로직과 동일하게)
+                            if '대표옵션' in margin_df_normalized.columns:
+                                margin_df_normalized['대표옵션'] = margin_df_normalized['대표옵션'].astype(str).str.upper().isin(['O', 'Y', 'TRUE'])
+                            
+                            if '스토어' in margin_df.columns:
+                                # 단계별 디버깅 로그
+                                id_matches = margin_df_normalized[margin_df_normalized['정규화_상품ID'] == normalized_product_id]
+                                logging.info(f"-> {store}({date}) 상품 {normalized_product_id}: 정규화ID 매칭 {len(id_matches)}개")
+                                
+                                store_matches = margin_df_normalized[
+                                    (margin_df_normalized['정규화_상품ID'] == normalized_product_id) & 
+                                    (margin_df_normalized['스토어'] == store)
+                                ]
+                                logging.info(f"-> {store}({date}) 상품 {normalized_product_id}: 스토어 매칭 {len(store_matches)}개")
+                                if len(store_matches) > 0:
+                                    logging.info(f"-> {store}({date}) 상품 {normalized_product_id}: 대표옵션 값들 {store_matches['대표옵션'].tolist()}")
+                                
+                                product_margin = margin_df_normalized[
+                                    (margin_df_normalized['정규화_상품ID'] == normalized_product_id) & 
+                                    (margin_df_normalized['스토어'] == store) &
+                                    (margin_df_normalized['대표옵션'] == True)
+                                ]
+                                logging.info(f"-> {store}({date}) 상품 {normalized_product_id}: 최종 매칭 {len(product_margin)}개")
+                            else:
+                                # 스토어 컬럼이 없으면 기존 방식
+                                product_margin = margin_df_normalized[
+                                    (margin_df_normalized['정규화_상품ID'] == normalized_product_id) & 
+                                    (margin_df_normalized['대표옵션'] == True)
+                                ]
                             
                             if len(product_margin) > 0:
                                 product_info = product_margin.iloc[0]
-                                # 0 데이터 행 생성
+                                # 0 데이터 행 생성 (정규화된 상품ID 사용)
                                 zero_row = {
-                                    '상품ID': product_id,
+                                    '상품ID': normalized_product_id,
                                     '옵션정보': product_info.get('옵션정보', ''),
                                     '수량': 0,
                                     '환불수량': 0
                                 }
                                 
-                                # 상품명이 있다면 추가
-                                if 'product_name' in locals() and '상품명' in option_summary.columns:
-                                    zero_row['상품명'] = product_info.get('상품명', f'상품{product_id}')
+                                # 상품명 추가 (마진정보에서 가져오기)
+                                if '상품명' in product_info:
+                                    zero_row['상품명'] = product_info['상품명']
+                                else:
+                                    zero_row['상품명'] = f'상품{normalized_product_id}'
                                 
-                                missing_products.append(zero_row)
-                                logging.info(f"-> {store}({date}) 0 데이터 추가: 상품 {product_id}")
+                                local_missing_products.append(zero_row)
+                                logging.info(f"-> {store}({date}) 0 데이터 추가: 상품 {normalized_product_id} (상품명: {zero_row['상품명']})")
+                            else:
+                                logging.info(f"-> {store}({date}) 상품 {normalized_product_id}의 대표옵션을 찾을 수 없음")
                     else:
                         logging.info(f"-> {store}({date}) 모든 리워드 설정 상품이 주문조회에 존재합니다.")
                 
                 # 누락된 상품들을 option_summary에 추가
-                if missing_products:
-                    missing_df = pd.DataFrame(missing_products)
+                if local_missing_products:
+                    missing_df = pd.DataFrame(local_missing_products)
                     option_summary = pd.concat([option_summary, missing_df], ignore_index=True)
-                    logging.info(f"-> {store}({date}) {len(missing_products)}개 리워드 상품을 0 데이터로 추가 완료")
+                    logging.info(f"-> {store}({date}) {len(local_missing_products)}개 리워드 상품을 0 데이터로 추가 완료")
                     logging.info(f"-> {store}({date}) 최종 옵션별 집계: {len(option_summary)}개 옵션")
                 else:
                     logging.info(f"-> {store}({date}) 리워드 파일이 존재하지 않습니다: {reward_file}")
@@ -710,16 +963,25 @@ def generate_individual_reports():
             # 대표판매가 (가구매 금액 계산용)
             final_df['대표판매가'] = final_df['상품ID'].map(rep_price_map).fillna(0)
             
-            # 가구매 개수 적용 (대표옵션에만, GUI에서 설정한 값)
+            # 가구매 개수 적용 (옵션별, 대표옵션에만, GUI에서 설정한 값)
             final_df['가구매 개수'] = 0  # 기본값
             rep_option_mask = final_df['대표옵션'] == True
             
             if rep_option_mask.sum() > 0:
-                for product_id in final_df.loc[rep_option_mask, '상품ID'].unique():
-                    purchase_count = get_purchase_count_for_date_and_product(product_id, date)
-                    final_df.loc[(final_df['상품ID'] == product_id) & rep_option_mask, '가구매 개수'] = purchase_count
-                    if purchase_count > 0:
-                        logging.info(f"-> {store}({date}) 상품 {product_id} 가구매 개수: {purchase_count}")
+                # 벡터화된 가구매 개수 적용
+                def get_purchase_vectorized(row):
+                    return get_purchase_count_for_date_and_product(row['상품ID'], date, row.get('옵션정보', ''))
+                
+                rep_indices = final_df[rep_option_mask].index
+                purchase_values = final_df.loc[rep_indices].apply(get_purchase_vectorized, axis=1)
+                final_df.loc[rep_indices, '가구매 개수'] = purchase_values
+                
+                # 로깅 (0보다 큰 값만)
+                positive_purchases = final_df.loc[rep_indices & (final_df['가구매 개수'] > 0)]
+                if len(positive_purchases) > 0:
+                    purchase_summary = positive_purchases.groupby(['상품ID', '옵션정보'])['가구매 개수'].first()
+                    for (product_id, option_info), count in purchase_summary.items():
+                        logging.info(f"-> {store}({date}) 상품 {product_id} 옵션 '{option_info}' 가구매 개수: {count}")
             
             # 추가 계산 필드들
             final_df['가구매 수량'] = final_df['가구매 개수']
@@ -728,14 +990,23 @@ def generate_individual_reports():
             final_df['순매출'] = final_df['매출'] - final_df['가구매 금액']
             final_df['가구매 비용'] = final_df['개당 가구매 비용'] * final_df['가구매 수량']
             
-            # 리워드 적용 (대표옵션에만)
+            # 리워드 적용 (옵션별, 대표옵션에만)
             final_df['리워드'] = 0
             if rep_option_mask.sum() > 0:
-                for product_id in final_df.loc[rep_option_mask, '상품ID'].unique():
-                    reward_value = get_reward_for_date_and_product(product_id, date)
-                    final_df.loc[(final_df['상품ID'] == product_id) & rep_option_mask, '리워드'] = reward_value
-                    if reward_value > 0:
-                        logging.info(f"-> {store}({date}) 상품 {product_id} 리워드: {reward_value}원")
+                # 벡터화된 리워드 적용
+                def get_reward_vectorized(row):
+                    return get_reward_for_date_and_product(row['상품ID'], date, row.get('옵션정보', ''))
+                
+                rep_indices = final_df[rep_option_mask].index
+                reward_values = final_df.loc[rep_indices].apply(get_reward_vectorized, axis=1)
+                final_df.loc[rep_indices, '리워드'] = reward_values
+                
+                # 로깅 (0보다 큰 값만)
+                positive_rewards = final_df.loc[rep_indices & (final_df['리워드'] > 0)]
+                if len(positive_rewards) > 0:
+                    reward_summary = positive_rewards.groupby(['상품ID', '옵션정보'])['리워드'].first()
+                    for (product_id, option_info), reward in reward_summary.items():
+                        logging.info(f"-> {store}({date}) 상품 {product_id} 옵션 '{option_info}' 리워드: {reward}원")
             
             # 안전한 나누기 함수 정의
             def safe_divide(numerator, denominator, fill_value=0.0):

@@ -655,14 +655,15 @@ class ModernRewardDialog(QDialog):
         
         # 상품 테이블
         self.reward_table = QTableWidget()
-        self.reward_table.setColumnCount(4)
-        self.reward_table.setHorizontalHeaderLabels(['선택', '상품ID', '상품명', '리워드 금액'])
+        self.reward_table.setColumnCount(5)
+        self.reward_table.setHorizontalHeaderLabels(['선택', '상품ID', '상품명', '옵션정보', '리워드 금액'])
         self.reward_table.setMinimumHeight(350)  # 높이 약간 줄여서 버튼 공간 확보
         header = self.reward_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # 체크박스
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # 상품ID
         header.setSectionResizeMode(2, QHeaderView.Stretch)  # 상품명
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # 리워드 금액
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # 옵션정보
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # 리워드 금액
         layout.addWidget(self.reward_table)
         
         # 스크롤 영역 설정 (버튼들은 제외)
@@ -731,7 +732,11 @@ class ModernRewardDialog(QDialog):
                 if '대표옵션' in df.columns:
                     df['대표옵션'] = df['대표옵션'].astype(str).str.upper().isin(['O', 'Y', 'TRUE'])
                     df = df[df['대표옵션'] == True]
-                self.products_df = df[['상품ID', '상품명']].drop_duplicates().sort_values(by='상품명')
+                # 옵션정보 컬럼도 포함하여 products_df 생성
+                columns_to_keep = ['상품ID', '상품명']
+                if '옵션정보' in df.columns:
+                    columns_to_keep.append('옵션정보')
+                self.products_df = df[columns_to_keep].drop_duplicates().sort_values(by='상품명')
             if os.path.exists(self.reward_file):
                 with open(self.reward_file, 'r', encoding='utf-8') as f:
                     content = f.read()
@@ -746,12 +751,34 @@ class ModernRewardDialog(QDialog):
             return product_id_str[:-2]
         return product_id_str
     
-    def find_reward_value(self, product_id, reward_map):
-        """product_id에 대한 리워드 값 찾기 (.0 있는 버전과 없는 버전 모두 확인)"""
+    def safe_get_option_info(self, product):
+        """상품 데이터에서 옵션정보를 안전하게 가져오기"""
+        import pandas as pd
+        option_info = product.get('옵션정보', '')
+        
+        # pandas NA 값 처리
+        if pd.isna(option_info):
+            return ''
+        
+        # 문자열로 변환하고 공백 제거
+        return str(option_info).strip()
+    
+    def find_reward_value(self, product_id, reward_map, option_info=''):
+        """product_id와 옵션정보에 대한 리워드 값 찾기"""
         clean_id = self.normalize_product_id(product_id)
         dotted_id = clean_id + '.0'
         
-        # 깨끗한 ID 먼저 확인, 없으면 .0 버전 확인
+        # 3-tuple 키로 옵션별 설정 확인
+        option_key = (clean_id, option_info)
+        dotted_option_key = (dotted_id, option_info)
+        
+        # 옵션별 설정이 있으면 우선 사용
+        if option_key in reward_map:
+            return reward_map[option_key]
+        if dotted_option_key in reward_map:
+            return reward_map[dotted_option_key]
+        
+        # 기존 방식 (하위 호환성)
         return reward_map.get(clean_id, reward_map.get(dotted_id, 0))
     
     def clear_table_widgets(self):
@@ -784,12 +811,20 @@ class ModernRewardDialog(QDialog):
         for e in self.all_rewards_data.get('rewards', []):
             if e.get('start_date') == target_date_str:
                 product_id = str(e['product_id'])
-                reward_map[product_id] = e['reward']
+                option_info = e.get('option_info', '')
+                
+                # 옵션별 설정이 있으면 3-tuple 키로 저장
+                if option_info:
+                    reward_map[(product_id, option_info)] = e['reward']
+                else:
+                    # 기존 방식 (하위 호환성)
+                    reward_map[product_id] = e['reward']
         
         self.reward_table.setRowCount(len(self.products_df))
         
         for row, (_, product) in enumerate(self.products_df.iterrows()):
             product_id = str(product['상품ID'])
+            option_info = self.safe_get_option_info(product)
             
             # 체크박스 생성 및 이벤트 연결
             checkbox = QCheckBox()
@@ -798,6 +833,7 @@ class ModernRewardDialog(QDialog):
             
             self.reward_table.setItem(row, 1, QTableWidgetItem(product_id))
             self.reward_table.setItem(row, 2, QTableWidgetItem(str(product['상품명'])))
+            self.reward_table.setItem(row, 3, QTableWidgetItem(option_info))
             
             # 스핀박스 생성 (1000원 단위, 개선된 UI)
             spinbox = QSpinBox()
@@ -805,11 +841,11 @@ class ModernRewardDialog(QDialog):
             spinbox.setSingleStep(1000)  # 1000원 단위로 증감
             spinbox.setSuffix(" 원")
             # 호환성을 위해 두 형식 모두 확인
-            reward_value = self.find_reward_value(product_id, reward_map)
+            reward_value = self.find_reward_value(product_id, reward_map, option_info)
             spinbox.setValue(reward_value)
             # 기본 스타일만 적용 (가구매 관리처럼)
             spinbox.setMinimumHeight(28)
-            self.reward_table.setCellWidget(row, 3, spinbox)
+            self.reward_table.setCellWidget(row, 4, spinbox)
         
         self.filter_products()
         self.update_selected_count()
@@ -859,7 +895,7 @@ class ModernRewardDialog(QDialog):
             applied_count = 0
             for row in range(self.reward_table.rowCount()):
                 checkbox = self.reward_table.cellWidget(row, 0)
-                spinbox = self.reward_table.cellWidget(row, 3)
+                spinbox = self.reward_table.cellWidget(row, 4)
                 if checkbox and checkbox.isChecked() and spinbox:
                     spinbox.setValue(bulk_value)
                     applied_count += 1
@@ -954,11 +990,16 @@ class ModernRewardDialog(QDialog):
             other_days_rewards = [e for e in self.all_rewards_data.get('rewards', []) if e.get('start_date') != target_date_str]
             new_rewards = []
             for row in range(self.reward_table.rowCount()):
-                new_rewards.append({
+                reward_entry = {
                     'start_date': target_date_str, 'end_date': target_date_str,
                     'product_id': self.reward_table.item(row, 1).text(),
-                    'reward': self.reward_table.cellWidget(row, 3).value()
-                })
+                    'reward': self.reward_table.cellWidget(row, 4).value()
+                }
+                # 옵션정보가 있으면 추가
+                option_info = self.reward_table.item(row, 3).text()
+                if option_info:
+                    reward_entry['option_info'] = option_info
+                new_rewards.append(reward_entry)
             self.all_rewards_data['rewards'] = other_days_rewards + new_rewards
             with open(self.reward_file, 'w', encoding='utf-8') as f:
                 json.dump(self.all_rewards_data, f, ensure_ascii=False, indent=2)
@@ -1067,14 +1108,15 @@ class PurchaseManagerDialog(QDialog):
         
         # 상품 테이블
         self.product_table = QTableWidget()
-        self.product_table.setColumnCount(4)
-        self.product_table.setHorizontalHeaderLabels(['선택', '상품ID', '상품명', '가구매 개수'])
+        self.product_table.setColumnCount(5)
+        self.product_table.setHorizontalHeaderLabels(['선택', '상품ID', '상품명', '옵션정보', '가구매 개수'])
         self.product_table.setMinimumHeight(350)  # 높이 설정하여 버튼 공간 확보
         header = self.product_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # 체크박스
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # 상품ID
         header.setSectionResizeMode(2, QHeaderView.Stretch)  # 상품명
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # 가구매 개수
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # 옵션정보
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # 가구매 개수
         layout.addWidget(self.product_table)
         
         # 스크롤 영역 설정 (버튼들은 제외)
@@ -1143,7 +1185,11 @@ class PurchaseManagerDialog(QDialog):
                 if '대표옵션' in df.columns:
                     df['대표옵션'] = df['대표옵션'].astype(str).str.upper().isin(['O', 'Y', 'TRUE'])
                     df = df[df['대표옵션'] == True]
-                self.products_df = df[['상품ID', '상품명']].drop_duplicates().sort_values(by='상품명')
+                # 옵션정보 컬럼도 포함하여 products_df 생성
+                columns_to_keep = ['상품ID', '상품명']
+                if '옵션정보' in df.columns:
+                    columns_to_keep.append('옵션정보')
+                self.products_df = df[columns_to_keep].drop_duplicates().sort_values(by='상품명')
             if os.path.exists(self.purchase_file):
                 with open(self.purchase_file, 'r', encoding='utf-8') as f:
                     content = f.read()
@@ -1158,12 +1204,34 @@ class PurchaseManagerDialog(QDialog):
             return product_id_str[:-2]
         return product_id_str
 
-    def find_purchase_value(self, product_id, purchase_map):
-        """product_id에 대한 가구매 값 찾기 (.0 있는 버전과 없는 버전 모두 확인)"""
+    def safe_get_option_info(self, product):
+        """상품 데이터에서 옵션정보를 안전하게 가져오기"""
+        import pandas as pd
+        option_info = product.get('옵션정보', '')
+        
+        # pandas NA 값 처리
+        if pd.isna(option_info):
+            return ''
+        
+        # 문자열로 변환하고 공백 제거
+        return str(option_info).strip()
+
+    def find_purchase_value(self, product_id, purchase_map, option_info=''):
+        """product_id와 옵션정보에 대한 가구매 값 찾기"""
         clean_id = self.normalize_product_id(product_id)
         dotted_id = clean_id + '.0'
         
-        # 깨끗한 ID 먼저 확인, 없으면 .0 버전 확인
+        # 3-tuple 키로 옵션별 설정 확인
+        option_key = (clean_id, option_info)
+        dotted_option_key = (dotted_id, option_info)
+        
+        # 옵션별 설정이 있으면 우선 사용
+        if option_key in purchase_map:
+            return purchase_map[option_key]
+        if dotted_option_key in purchase_map:
+            return purchase_map[dotted_option_key]
+        
+        # 기존 방식 (하위 호환성)
         return purchase_map.get(clean_id, purchase_map.get(dotted_id, 0))
     
     def clear_table_widgets(self):
@@ -1196,12 +1264,20 @@ class PurchaseManagerDialog(QDialog):
         for e in self.all_purchases_data.get('purchases', []):
             if e.get('start_date') == target_date_str:
                 product_id = str(e['product_id'])
-                purchase_map[product_id] = e['purchase_count']
+                option_info = e.get('option_info', '')
+                
+                # 옵션별 설정이 있으면 3-tuple 키로 저장
+                if option_info:
+                    purchase_map[(product_id, option_info)] = e['purchase_count']
+                else:
+                    # 기존 방식 (하위 호환성)
+                    purchase_map[product_id] = e['purchase_count']
         
         self.product_table.setRowCount(len(self.products_df))
         
         for row, (_, product) in enumerate(self.products_df.iterrows()):
             product_id = str(product['상품ID'])
+            option_info = self.safe_get_option_info(product)
             
             # 체크박스 생성 및 이벤트 연결
             checkbox = QCheckBox()
@@ -1210,15 +1286,16 @@ class PurchaseManagerDialog(QDialog):
             
             self.product_table.setItem(row, 1, QTableWidgetItem(product_id))
             self.product_table.setItem(row, 2, QTableWidgetItem(str(product['상품명'])))
+            self.product_table.setItem(row, 3, QTableWidgetItem(option_info))
             
             # 스핀박스 생성
             spinbox = QSpinBox()
             spinbox.setRange(0, 9999)
             spinbox.setSuffix(" 개")
             # 호환성을 위해 두 형식 모두 확인
-            purchase_value = self.find_purchase_value(product_id, purchase_map)
+            purchase_value = self.find_purchase_value(product_id, purchase_map, option_info)
             spinbox.setValue(purchase_value)
-            self.product_table.setCellWidget(row, 3, spinbox)
+            self.product_table.setCellWidget(row, 4, spinbox)
         
         self.filter_products()
         self.update_selected_count()  # 초기 상태 업데이트
@@ -1268,7 +1345,7 @@ class PurchaseManagerDialog(QDialog):
             applied_count = 0
             for row in range(self.product_table.rowCount()):
                 checkbox = self.product_table.cellWidget(row, 0)
-                spinbox = self.product_table.cellWidget(row, 3)
+                spinbox = self.product_table.cellWidget(row, 4)
                 if checkbox and checkbox.isChecked() and spinbox:
                     spinbox.setValue(bulk_value)
                     applied_count += 1
@@ -1320,11 +1397,16 @@ class PurchaseManagerDialog(QDialog):
             other_days_purchases = [e for e in self.all_purchases_data.get('purchases', []) if e.get('start_date') != target_date_str]
             new_purchases = []
             for row in range(self.product_table.rowCount()):
-                new_purchases.append({
+                purchase_entry = {
                     'start_date': target_date_str, 'end_date': target_date_str,
                     'product_id': self.product_table.item(row, 1).text(),
-                    'purchase_count': self.product_table.cellWidget(row, 3).value()
-                })
+                    'purchase_count': self.product_table.cellWidget(row, 4).value()
+                }
+                # 옵션정보가 있으면 추가
+                option_info = self.product_table.item(row, 3).text()
+                if option_info:
+                    purchase_entry['option_info'] = option_info
+                new_purchases.append(purchase_entry)
             self.all_purchases_data['purchases'] = other_days_purchases + new_purchases
             with open(self.purchase_file, 'w', encoding='utf-8') as f:
                 json.dump(self.all_purchases_data, f, ensure_ascii=False, indent=2)

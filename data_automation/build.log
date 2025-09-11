@@ -1,0 +1,40 @@
+271 INFO: PyInstaller: 6.15.0, contrib hooks: 2025.8
+272 INFO: Python: 3.13.6
+297 INFO: Platform: Windows-10-10.0.19045-SP0
+297 INFO: Python environment: C:\Users\User\AppData\Local\Programs\Python\Python313
+298 INFO: wrote C:\Users\User\Desktop\auto_data2\data_automation\판매데이터자동화_스토어컬럼기반_v2.spec
+311 INFO: Module search paths (PYTHONPATH):
+['C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\pyinstaller.exe',
+ 'C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\python313.zip',
+ 'C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\DLLs',
+ 'C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\Lib',
+ 'C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313',
+ 'C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages',
+ 'C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\win32',
+ 'C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\win32\\lib',
+ 'C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\Pythonwin',
+ 'C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\setuptools\\_vendor',
+ 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation']
+336 WARNING: qt_material must be imported after PySide or PyQt!
+893 INFO: Appending 'datas' from .spec
+893 INFO: checking Analysis
+1144 INFO: checking PYZ
+1184 INFO: Building because C:\Users\User\Desktop\auto_data2\data_automation\modules\report_generator.py changed
+1184 INFO: Building PYZ (ZlibArchive) C:\Users\User\Desktop\auto_data2\data_automation\build\판매데이터자동화_스토어컬럼기반_v2\PYZ-00.pyz
+9569 INFO: Building PYZ (ZlibArchive) C:\Users\User\Desktop\auto_data2\data_automation\build\판매데이터자동화_스토어컬럼기반_v2\PYZ-00.pyz completed successfully.
+9668 INFO: checking PKG
+9712 INFO: Building because toc changed
+9712 INFO: Building PKG (CArchive) 판매데이터자동화_스토어컬럼기반_v2.pkg
+59435 INFO: Building PKG (CArchive) 판매데이터자동화_스토어컬럼기반_v2.pkg completed successfully.
+59485 INFO: Bootloader C:\Users\User\AppData\Local\Programs\Python\Python313\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+59485 INFO: checking EXE
+59531 INFO: Rebuilding EXE-00.toc because 판매데이터자동화_스토어컬럼기반_v2.exe missing
+59531 INFO: Building EXE from EXE-00.toc
+59531 INFO: Copying bootloader EXE to C:\Users\User\Desktop\auto_data2\data_automation\판매데이터자동화_스토어컬럼기반_v2.exe
+59623 INFO: Copying icon to EXE
+59686 INFO: Copying 0 resources to EXE
+59686 INFO: Embedding manifest in EXE
+59692 INFO: Appending PKG archive to EXE
+59853 INFO: Fixing EXE headers
+68718 INFO: Building EXE from EXE-00.toc completed successfully.
+68767 INFO: Build complete! The results are available in: C:\Users\User\Desktop\auto_data2\data_automation
