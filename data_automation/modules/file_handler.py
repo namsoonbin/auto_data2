@@ -181,10 +181,21 @@ def process_existing_files():
     processed_files = 0
     total_files = 0
     
-    # 다운로드 폴더 내의 모든 스토어 폴더 탐색
+    # 제외할 시스템 폴더들
+    excluded_folders = set()
+    try:
+        excluded_folders.add(os.path.basename(config.get_processing_dir()))  # 작업폴더
+        excluded_folders.add(os.path.basename(config.get_archive_dir()))     # 원본_보관함
+        excluded_folders.add(os.path.basename(config.get_report_archive_dir())) # 리포트보관함
+    except Exception as e:
+        logging.warning(f"시스템 폴더 경로 확인 실패: {e}")
+    
+    logging.info(f"제외할 시스템 폴더들: {excluded_folders}")
+    
+    # 다운로드 폴더 내의 스토어 폴더만 탐색 (시스템 폴더 제외)
     for store_folder in os.listdir(config.DOWNLOAD_DIR):
         store_path = os.path.join(config.DOWNLOAD_DIR, store_folder)
-        if os.path.isdir(store_path):
+        if os.path.isdir(store_path) and store_folder not in excluded_folders:
             logging.info(f"📁 스토어 폴더 스캔: {store_folder}")
             store_files = [f for f in os.listdir(store_path) if f.endswith('.xlsx') and not f.startswith('~')]
             total_files += len(store_files)
@@ -210,6 +221,11 @@ def process_existing_files():
     
     # 2단계: 작업폴더의 미완료 처리 파일들 검사 및 처리
     process_incomplete_files()
+    
+    # 3단계: 모든 개별 처리 완료 후 전체 통합 리포트 생성 및 파일 정리
+    if processed_files > 0:
+        logging.info("🔄 개별 처리 완료 - 전체 통합 리포트 생성 시작")
+        finalize_all_processing()
     
     logging.info("===== 기존 파일 스캔 완료 =====")
 

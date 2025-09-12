@@ -806,19 +806,20 @@ class ModernRewardDialog(QDialog):
         # 기존 위젯들 정리
         self.clear_table_widgets()
         
-        # 모든 형식의 product_id를 포함하는 reward_map 생성
+        # 모든 형식의 product_id를 포함하는 reward_map 생성 (정규화된 ID 사용)
         reward_map = {}
         for e in self.all_rewards_data.get('rewards', []):
             if e.get('start_date') == target_date_str:
                 product_id = str(e['product_id'])
+                normalized_product_id = self.normalize_product_id(product_id)
                 option_info = e.get('option_info', '')
                 
                 # 옵션별 설정이 있으면 3-tuple 키로 저장
                 if option_info:
-                    reward_map[(product_id, option_info)] = e['reward']
+                    reward_map[(normalized_product_id, option_info)] = e['reward']
                 else:
-                    # 기존 방식 (하위 호환성)
-                    reward_map[product_id] = e['reward']
+                    # 기존 방식 (하위 호환성) - 정규화된 ID 사용
+                    reward_map[normalized_product_id] = e['reward']
         
         self.reward_table.setRowCount(len(self.products_df))
         
@@ -852,28 +853,39 @@ class ModernRewardDialog(QDialog):
 
     def copy_rewards(self):
         source_date_str = self.source_date_edit.date().toString("yyyy-MM-dd")
-        reward_map = {}
         
-        # 리워드 데이터에서 해당 날짜 설정 찾기
-        for entry in self.all_rewards_data.get('rewards', []):
-            if entry.get('start_date') == source_date_str:
-                product_id = str(entry['product_id'])
-                reward_map[product_id] = entry['reward']
+        # load_rewards_for_date()와 동일한 방식으로 reward_map 생성 (정규화된 ID 사용)
+        reward_map = {}
+        for e in self.all_rewards_data.get('rewards', []):
+            if e.get('start_date') == source_date_str:
+                product_id = str(e['product_id'])
+                normalized_product_id = self.normalize_product_id(product_id)
+                option_info = e.get('option_info', '')
+                
+                # 옵션별 설정이 있으면 3-tuple 키로 저장
+                if option_info:
+                    reward_map[(normalized_product_id, option_info)] = e['reward']
+                else:
+                    # 기존 방식 (하위 호환성) - 정규화된 ID 사용
+                    reward_map[normalized_product_id] = e['reward']
         
         if not reward_map:
             QMessageBox.information(self, "알림", f"{source_date_str}에 저장된 리워드 설정이 없습니다.")
             return
             
-        # 현재 테이블에 적용
+        # 현재 테이블에 적용 (올바른 컬럼 인덱스 사용)
         applied_count = 0
         for row in range(self.reward_table.rowCount()):
-            product_id_item = self.reward_table.item(row, 1)
-            spinbox = self.reward_table.cellWidget(row, 3)
+            product_id_item = self.reward_table.item(row, 1)      # 상품ID
+            option_info_item = self.reward_table.item(row, 3)     # 옵션정보 (컬럼 3)
+            spinbox = self.reward_table.cellWidget(row, 4)        # 스핀박스 (컬럼 4)
             if product_id_item and spinbox:
                 product_id = product_id_item.text()
-                # 호환성을 위해 두 형식 모두 확인
-                reward_value = self.find_reward_value(product_id, reward_map)
-                if reward_value > 0:  # 리워드 값이 있는 경우만 적용
+                option_info = option_info_item.text() if option_info_item else ''
+                
+                # find_reward_value()와 동일한 방식으로 찾기
+                reward_value = self.find_reward_value(product_id, reward_map, option_info)
+                if reward_value > 0:
                     spinbox.setValue(reward_value)
                     applied_count += 1
         
@@ -1259,19 +1271,20 @@ class PurchaseManagerDialog(QDialog):
         # 기존 위젯들 정리
         self.clear_table_widgets()
         
-        # 모든 형식의 product_id를 포함하는 purchase_map 생성
+        # 모든 형식의 product_id를 포함하는 purchase_map 생성 (정규화된 ID 사용)
         purchase_map = {}
         for e in self.all_purchases_data.get('purchases', []):
             if e.get('start_date') == target_date_str:
                 product_id = str(e['product_id'])
+                normalized_product_id = self.normalize_product_id(product_id)
                 option_info = e.get('option_info', '')
                 
                 # 옵션별 설정이 있으면 3-tuple 키로 저장
                 if option_info:
-                    purchase_map[(product_id, option_info)] = e['purchase_count']
+                    purchase_map[(normalized_product_id, option_info)] = e['purchase_count']
                 else:
-                    # 기존 방식 (하위 호환성)
-                    purchase_map[product_id] = e['purchase_count']
+                    # 기존 방식 (하위 호환성) - 정규화된 ID 사용
+                    purchase_map[normalized_product_id] = e['purchase_count']
         
         self.product_table.setRowCount(len(self.products_df))
         
@@ -1302,28 +1315,39 @@ class PurchaseManagerDialog(QDialog):
 
     def copy_purchases(self):
         source_date_str = self.source_date_edit.date().toString("yyyy-MM-dd")
-        purchase_map = {}
         
-        # 가구매 데이터에서 해당 날짜 설정 찾기
-        for entry in self.all_purchases_data.get('purchases', []):
-            if entry.get('start_date') == source_date_str:
-                product_id = str(entry['product_id'])
-                purchase_map[product_id] = entry['purchase_count']
+        # load_purchases_for_date()와 동일한 방식으로 purchase_map 생성 (정규화된 ID 사용)
+        purchase_map = {}
+        for e in self.all_purchases_data.get('purchases', []):
+            if e.get('start_date') == source_date_str:
+                product_id = str(e['product_id'])
+                normalized_product_id = self.normalize_product_id(product_id)
+                option_info = e.get('option_info', '')
+                
+                # 옵션별 설정이 있으면 3-tuple 키로 저장
+                if option_info:
+                    purchase_map[(normalized_product_id, option_info)] = e['purchase_count']
+                else:
+                    # 기존 방식 (하위 호환성) - 정규화된 ID 사용
+                    purchase_map[normalized_product_id] = e['purchase_count']
         
         if not purchase_map:
             QMessageBox.information(self, "알림", f"{source_date_str}에 저장된 가구매 설정이 없습니다.")
             return
             
-        # 현재 테이블에 적용
+        # 현재 테이블에 적용 (올바른 컬럼 인덱스 사용)
         applied_count = 0
         for row in range(self.product_table.rowCount()):
-            product_id_item = self.product_table.item(row, 1)
-            spinbox = self.product_table.cellWidget(row, 3)
+            product_id_item = self.product_table.item(row, 1)      # 상품ID
+            option_info_item = self.product_table.item(row, 3)     # 옵션정보 (컬럼 3)
+            spinbox = self.product_table.cellWidget(row, 4)        # 스핀박스 (컬럼 4)
             if product_id_item and spinbox:
                 product_id = product_id_item.text()
-                # 호환성을 위해 두 형식 모두 확인
-                purchase_value = self.find_purchase_value(product_id, purchase_map)
-                if purchase_value > 0:  # 가구매 값이 있는 경우만 적용
+                option_info = option_info_item.text() if option_info_item else ''
+                
+                # find_purchase_value()와 동일한 방식으로 찾기
+                purchase_value = self.find_purchase_value(product_id, purchase_map, option_info)
+                if purchase_value > 0:
                     spinbox.setValue(purchase_value)
                     applied_count += 1
         

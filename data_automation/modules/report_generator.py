@@ -977,11 +977,15 @@ def generate_individual_reports():
                 final_df.loc[rep_indices, '가구매 개수'] = purchase_values
                 
                 # 로깅 (0보다 큰 값만)
-                positive_purchases = final_df.loc[rep_indices & (final_df['가구매 개수'] > 0)]
+                positive_purchase_mask = rep_option_mask & (final_df['가구매 개수'] > 0)
+                positive_purchases = final_df.loc[positive_purchase_mask]
                 if len(positive_purchases) > 0:
                     purchase_summary = positive_purchases.groupby(['상품ID', '옵션정보'])['가구매 개수'].first()
                     for (product_id, option_info), count in purchase_summary.items():
                         logging.info(f"-> {store}({date}) 상품 {product_id} 옵션 '{option_info}' 가구매 개수: {count}")
+            
+            # 실판매개수 계산 (수량 - 환불수량 - 가구매 개수, 음수값 허용)
+            final_df['실판매개수'] = final_df['수량'] - final_df['환불수량'] - final_df['가구매 개수']
             
             # 추가 계산 필드들
             final_df['가구매 수량'] = final_df['가구매 개수']
@@ -1002,7 +1006,8 @@ def generate_individual_reports():
                 final_df.loc[rep_indices, '리워드'] = reward_values
                 
                 # 로깅 (0보다 큰 값만)
-                positive_rewards = final_df.loc[rep_indices & (final_df['리워드'] > 0)]
+                positive_reward_mask = rep_option_mask & (final_df['리워드'] > 0)
+                positive_rewards = final_df.loc[positive_reward_mask]
                 if len(positive_rewards) > 0:
                     reward_summary = positive_rewards.groupby(['상품ID', '옵션정보'])['리워드'].first()
                     for (product_id, option_info), reward in reward_summary.items():
@@ -1118,6 +1123,60 @@ def generate_individual_reports():
 
 
 
+def calculate_store_summary(store_data, store_name):
+    """스토어별 합산값을 계산하는 함수 (단순 합산 + 순매출 기준 가중평균)"""
+    try:
+        # 단순 합산이 필요한 컬럼들
+        sum_columns = [
+            '실판매개수', '수량', '환불수량', '가구매 개수', 
+            '결제금액', '환불금액', '매출', '순매출', 
+            '가구매 비용', '판매마진', '순이익', '리워드',
+            '가구매 금액', '개당 가구매 금액', '개당 가구매 비용'
+        ]
+        
+        # 합계 행 데이터 초기화
+        summary_row = {
+            '스토어명': store_name,  # 스토어명 추가 - 정렬에 중요!
+            '상품ID': f'{store_name}_총합',
+            '상품명': f'{store_name} 스토어 합계', 
+            '옵션정보': '총합'
+        }
+        
+        # 단순 합산 수행
+        for col in sum_columns:
+            if col in store_data.columns:
+                summary_row[col] = store_data[col].sum()
+        
+        # 순매출 기준 가중평균 계산
+        total_net_sales = store_data['순매출'].sum()
+        
+        if total_net_sales > 0:
+            # 판매가: 수량 기준 가중평균
+            total_quantity = store_data['수량'].sum()
+            if total_quantity > 0:
+                summary_row['판매가'] = (store_data['판매가'] * store_data['수량']).sum() / total_quantity
+            else:
+                summary_row['판매가'] = 0
+                
+            # 마진율, 광고비율, 이윤율: 순매출 기준 가중평균
+            summary_row['마진율'] = (store_data['마진율'] * store_data['순매출']).sum() / total_net_sales
+            summary_row['광고비율'] = (store_data['광고비율'] * store_data['순매출']).sum() / total_net_sales  
+            summary_row['이윤율'] = (store_data['이윤율'] * store_data['순매출']).sum() / total_net_sales
+        else:
+            # 순매출이 0인 경우 기본값
+            summary_row['판매가'] = 0
+            summary_row['마진율'] = 0
+            summary_row['광고비율'] = 0
+            summary_row['이윤율'] = 0
+        
+        logging.info(f"-> {store_name} 스토어 합계 계산 완료: 순매출 {summary_row.get('순매출', 0):,.0f}원")
+        return summary_row
+        
+    except Exception as e:
+        logging.error(f"-> {store_name} 스토어 합계 계산 중 오류: {e}")
+        return None
+
+
 def consolidate_daily_reports():
     """날짜별로 생성된 모든 개별 리포트를 취합하여 전체 통합 리포트를 생성합니다."""
     logging.info("--- 2단계: 전체 통합 리포트 생성 시작 ---")
@@ -1205,7 +1264,7 @@ def consolidate_daily_reports():
                 logging.warning(f"-> 집계 키에 NULL이 남아있는 {before_nulls - after_nulls}개 행 발견, 제거됨")
                 master_df = master_df_clean
             agg_methods = {
-                '수량': 'sum', '판매마진': 'sum', '결제수': 'sum', '결제금액': 'sum',
+                '실판매개수': 'sum', '수량': 'sum', '판매마진': 'sum', '결제수': 'sum', '결제금액': 'sum',
                 '환불건수': 'sum', '환불금액': 'sum', '환불수량': 'sum',
                 '가구매 개수': 'sum', '판매가': 'mean', '마진율': 'mean',
                 '가구매 비용': 'sum', '순매출': 'sum', '매출': 'sum', '가구매 금액': 'sum',
@@ -1238,11 +1297,65 @@ def consolidate_daily_reports():
                 if col in aggregated_df.columns:
                     aggregated_df[col] = aggregated_df[col].round(1)
             
+            # 스토어별 합계 행 추가
+            logging.info(f"-> {date} 날짜 스토어별 합계 행 생성 시작...")
+            summary_rows = []
+            
+            if '스토어명' in aggregated_df.columns:
+                unique_stores = aggregated_df['스토어명'].unique()
+                logging.info(f"-> 발견된 스토어: {list(unique_stores)}")
+                
+                for store_name in unique_stores:
+                    store_data = aggregated_df[aggregated_df['스토어명'] == store_name]
+                    logging.info(f"-> {store_name} 스토어 데이터: {len(store_data)}행")
+                    
+                    if len(store_data) > 0:
+                        summary_row = calculate_store_summary(store_data, store_name)
+                        if summary_row:
+                            # 모든 필요한 컬럼이 있는지 확인하고 없으면 기본값 설정
+                            for col in aggregated_df.columns:
+                                if col not in summary_row:
+                                    if col in ['마진율', '광고비율', '이윤율', '판매가']:
+                                        summary_row[col] = 0.0
+                                    elif col in ['수량', '실판매개수', '환불수량', '가구매 개수', '결제금액', '환불금액', '매출', '순매출', '가구매 비용', '판매마진', '순이익', '리워드']:
+                                        summary_row[col] = 0
+                                    else:
+                                        summary_row[col] = ''
+                            
+                            summary_rows.append(summary_row)
+                            logging.info(f"-> {store_name} 스토어 합계 행 생성 완료")
+            
+            # 스토어별 합계 행들을 DataFrame으로 변환하고 원본 데이터에 추가
+            if summary_rows:
+                summary_df = pd.DataFrame(summary_rows)
+                # 컬럼 순서를 원본과 맞춤
+                summary_df = summary_df.reindex(columns=aggregated_df.columns, fill_value=0)
+                
+                # 원본 데이터와 합계 행을 결합
+                aggregated_df = pd.concat([aggregated_df, summary_df], ignore_index=True)
+                logging.info(f"-> {date} 날짜 스토어별 합계 행 추가 완료: {len(summary_rows)}개 합계 행")
+            
+            # 스토어명으로 먼저 정렬한 후, 각 스토어 내에서는 상품명으로 정렬
+            # 합계 행이 각 스토어의 마지막에 오도록 정렬
+            def sort_key(row):
+                store = str(row['스토어명'])
+                product_name = str(row['상품명'])
+                # 합계 행인 경우 해당 스토어의 마지막에 배치
+                if '스토어 합계' in product_name:
+                    return (store, 1, '합계')  # 스토어 내에서 가장 마지막 (1은 일반 상품보다 뒤)
+                else:
+                    return (store, 0, product_name)  # 0은 일반 상품 (합계보다 앞)
+            
+            # 정렬 키 적용
+            sort_keys = aggregated_df.apply(sort_key, axis=1)
+            aggregated_df = aggregated_df.iloc[sorted(range(len(aggregated_df)), key=lambda i: sort_keys.iloc[i])]
+            aggregated_df = aggregated_df.reset_index(drop=True)
+            
             final_columns = ['스토어명'] + [col for col in config.COLUMNS_TO_KEEP if col in aggregated_df.columns]
             logging.info(f"-> {date} 날짜 최종 컬럼 수: {len(final_columns)}, 컬럼: {final_columns[:10]}...")  # 처음 10개만
             
             aggregated_df = aggregated_df[final_columns]
-            logging.info(f"-> {date} 날짜 최종 데이터: {len(aggregated_df)}행")
+            logging.info(f"-> {date} 날짜 최종 데이터 (합계 행 포함): {len(aggregated_df)}행")
             
             # 디버깅: 최종 저장 전 스토어별 데이터 개수 확인
             if '스토어명' in aggregated_df.columns:
