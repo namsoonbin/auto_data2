@@ -75,3 +75,72 @@ COLUMNS_TO_KEEP = [
 
 # --- 데이터 처리 설정 ---
 CANCEL_OR_REFUND_STATUSES = ['취소완료', '반품요청', '반품완료', '수거중']
+
+# --- 리포트 분류 시스템 ---
+REPORT_STRUCTURE = {
+    "individual": "개별리포트/{year}-{month:02d}/{month:02d}-{day:02d}",
+    "daily_consolidated": "일간통합리포트",
+    "weekly": "주간통합리포트"
+}
+
+def get_categorized_report_path(report_type, date_obj, filename):
+    """리포트 타입과 날짜에 따른 분류된 경로 반환"""
+    if DOWNLOAD_DIR is None:
+        raise ValueError("DOWNLOAD_DIR has not been set in config.")
+    
+    validated_path = validate_directory(DOWNLOAD_DIR)
+    base_report_dir = os.path.join(validated_path, '리포트보관함')
+    
+    if report_type == "individual":
+        sub_path = REPORT_STRUCTURE["individual"].format(
+            year=date_obj.year, 
+            month=date_obj.month, 
+            day=date_obj.day
+        )
+    else:
+        sub_path = REPORT_STRUCTURE[report_type]
+    
+    categorized_dir = os.path.join(base_report_dir, sub_path)
+    
+    # 디렉토리가 없으면 생성
+    os.makedirs(categorized_dir, exist_ok=True)
+    
+    return os.path.join(categorized_dir, filename)
+
+def detect_report_type(filename):
+    """파일명으로 리포트 타입 감지"""
+    if '주간_전체_통합_리포트' in filename or '주간_통합_리포트' in filename:
+        return 'weekly'
+    elif '전체_통합_리포트' in filename:
+        return 'daily_consolidated'
+    elif '_통합_리포트_' in filename and not filename.startswith('전체_'):
+        return 'individual'
+    return 'unknown'
+
+def create_report_folder_structure(date_obj):
+    """날짜에 따른 모든 리포트 폴더 구조 사전 생성"""
+    if DOWNLOAD_DIR is None:
+        raise ValueError("DOWNLOAD_DIR has not been set in config.")
+    
+    validated_path = validate_directory(DOWNLOAD_DIR)
+    base_report_dir = os.path.join(validated_path, '리포트보관함')
+    
+    # 개별리포트 폴더 생성
+    individual_dir = os.path.join(base_report_dir, REPORT_STRUCTURE["individual"].format(
+        year=date_obj.year, month=date_obj.month, day=date_obj.day
+    ))
+    os.makedirs(individual_dir, exist_ok=True)
+    
+    # 일간통합리포트 폴더 생성
+    daily_dir = os.path.join(base_report_dir, REPORT_STRUCTURE["daily_consolidated"])
+    os.makedirs(daily_dir, exist_ok=True)
+    
+    # 주간통합리포트 폴더 생성
+    weekly_dir = os.path.join(base_report_dir, REPORT_STRUCTURE["weekly"])
+    os.makedirs(weekly_dir, exist_ok=True)
+    
+    return {
+        'individual': individual_dir,
+        'daily_consolidated': daily_dir,
+        'weekly': weekly_dir
+    }

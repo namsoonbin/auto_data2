@@ -1147,24 +1147,30 @@ def calculate_store_summary(store_data, store_name):
             if col in store_data.columns:
                 summary_row[col] = store_data[col].sum()
         
-        # 순매출 기준 가중평균 계산
+        # 실제 금액 기준 정확한 비율 계산
         total_net_sales = store_data['순매출'].sum()
         
+        # 판매가: 수량 기준 가중평균
+        total_quantity = store_data['수량'].sum()
+        if total_quantity > 0:
+            summary_row['판매가'] = (store_data['판매가'] * store_data['수량']).sum() / total_quantity
+        else:
+            summary_row['판매가'] = 0
+        
         if total_net_sales > 0:
-            # 판매가: 수량 기준 가중평균
-            total_quantity = store_data['수량'].sum()
-            if total_quantity > 0:
-                summary_row['판매가'] = (store_data['판매가'] * store_data['수량']).sum() / total_quantity
-            else:
-                summary_row['판매가'] = 0
-                
-            # 마진율, 광고비율, 이윤율: 순매출 기준 가중평균
-            summary_row['마진율'] = (store_data['마진율'] * store_data['순매출']).sum() / total_net_sales
-            summary_row['광고비율'] = (store_data['광고비율'] * store_data['순매출']).sum() / total_net_sales  
-            summary_row['이윤율'] = (store_data['이윤율'] * store_data['순매출']).sum() / total_net_sales
+            # 마진율 = 총 판매마진 ÷ 총 순매출
+            total_margin = store_data['판매마진'].sum()
+            summary_row['마진율'] = (total_margin / total_net_sales * 100).round(1)
+            
+            # 광고비율 = 총 광고비 ÷ 총 순매출  
+            total_ad_cost = (store_data['리워드'] + store_data['가구매 비용']).sum()
+            summary_row['광고비율'] = (total_ad_cost / total_net_sales * 100).round(1)
+            
+            # 이윤율 = 총 순이익 ÷ 총 순매출
+            total_net_profit = store_data['순이익'].sum()
+            summary_row['이윤율'] = (total_net_profit / total_net_sales * 100).round(1)
         else:
             # 순매출이 0인 경우 기본값
-            summary_row['판매가'] = 0
             summary_row['마진율'] = 0
             summary_row['광고비율'] = 0
             summary_row['이윤율'] = 0

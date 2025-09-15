@@ -467,7 +467,27 @@ def move_reports_to_archive():
     for report_file in report_files:
         try:
             src_path = os.path.join(processing_dir, report_file)
-            dst_path = os.path.join(report_archive_dir, report_file)
+            
+            # 리포트 타입 감지 및 분류된 경로 생성
+            report_type = config.detect_report_type(report_file)
+            if report_type == 'unknown':
+                # 기존 방식으로 처리
+                dst_path = os.path.join(report_archive_dir, report_file)
+                logging.info(f"🔄 알 수 없는 리포트 타입, 기본 경로 사용: {report_file}")
+            else:
+                # 날짜 추출
+                import re
+                date_match = re.search(r'(\d{4}-\d{2}-\d{2})', report_file)
+                if date_match:
+                    from datetime import datetime
+                    date_str = date_match.group(1)
+                    date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    dst_path = config.get_categorized_report_path(report_type, date_obj, report_file)
+                    logging.info(f"📁 분류된 경로로 이동: {report_type} → {dst_path}")
+                else:
+                    # 날짜를 찾을 수 없으면 기본 경로 사용
+                    dst_path = os.path.join(report_archive_dir, report_file)
+                    logging.warning(f"⚠️ 날짜를 찾을 수 없어 기본 경로 사용: {report_file}")
             
             # 원본 파일 존재 여부 확인
             if not os.path.exists(src_path):

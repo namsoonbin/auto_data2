@@ -47,8 +47,13 @@ def create_weekly_report(start_date_str, end_date_str, download_folder=None):
         logging.warning(f"리포트 보관함 폴더를 찾을 수 없습니다: {report_archive_dir}")
         return False
 
-    # 리포트 보관함에서 전체 통합 리포트 파일 찾기
-    all_daily_reports = glob.glob(os.path.join(report_archive_dir, '전체_통합_리포트_*.xlsx'))
+    # 리포트 보관함의 일간통합리포트 폴더에서 전체 통합 리포트 파일 찾기
+    daily_consolidated_dir = os.path.join(report_archive_dir, '일간통합리포트')
+    if not os.path.exists(daily_consolidated_dir):
+        logging.warning(f"일간통합리포트 폴더를 찾을 수 없습니다: {daily_consolidated_dir}")
+        return False
+    
+    all_daily_reports = glob.glob(os.path.join(daily_consolidated_dir, '전체_통합_리포트_*.xlsx'))
     
     date_pattern = re.compile(r'전체_통합_리포트_(\d{4}-\d{2}-\d{2})\.xlsx')
     
@@ -171,7 +176,7 @@ def create_weekly_report(start_date_str, end_date_str, download_folder=None):
 
     # 기본 집계 (합계 위주)
     sum_agg_methods = {
-        '수량': 'sum', '판매마진': 'sum', '결제수': 'sum', '결제금액': 'sum',
+        '실판매개수': 'sum', '수량': 'sum', '판매마진': 'sum', '결제수': 'sum', '결제금액': 'sum',
         '환불건수': 'sum', '환불금액': 'sum', '환불수량': 'sum', '가구매 개수': 'sum',
         '가구매 비용': 'sum', '순매출': 'sum', '매출': 'sum', '가구매 금액': 'sum',
         '순이익': 'sum', '리워드': 'sum'
@@ -217,15 +222,72 @@ def create_weekly_report(start_date_str, end_date_str, download_folder=None):
         
         aggregated_df = aggregated_df.merge(weighted_price, on=grouping_keys, how='left')
     
-    # 비율 지표들 가중평균 계산 (매출액 기준)
-    ratio_columns = ['마진율', '광고비율', '이윤율']
-    for ratio_col in ratio_columns:
-        if ratio_col in master_df.columns:
-            weighted_ratio = master_df.groupby(grouping_keys).apply(
-                lambda x: safe_weighted_average(x, ratio_col, '매출')
-            ).reset_index(name=ratio_col)
+    # 비율 지표들 실제 금액 기준 정확한 계산 (순매출 기준)
+    try:
+        # 실제 금액들을 다시 그룹별로 집계
+        amount_aggregation = {
+            '판매마진': 'sum',
+            '순매출': 'sum', 
+            '순이익': 'sum',
+            '리워드': 'sum',
+            '가구매 비용': 'sum'
+        }
+        actual_amount_methods = {k: v for k, v in amount_aggregation.items() if k in master_df.columns}
+        
+        if actual_amount_methods:
+            amount_df = master_df.groupby(grouping_keys, as_index=False).agg(actual_amount_methods)
             
-            aggregated_df = aggregated_df.merge(weighted_ratio, on=grouping_keys, how='left')
+            # 비율 계산 (순매출 기준)
+            if '순매출' in amount_df.columns and amount_df['순매출'].sum() != 0:
+                # 마진율 = 총 판매마진 ÷ 총 순매출
+                if '판매마진' in amount_df.columns:
+                    amount_df['마진율'] = np.where(
+                        amount_df['순매출'] > 0,
+                        (amount_df['판매마진'] / amount_df['순매출'] * 100).round(1),
+                        0.0
+                    )
+                
+                # 광고비율 = 총 광고비(리워드+가구매비용) ÷ 총 순매출
+                if '리워드' in amount_df.columns and '가구매 비용' in amount_df.columns:
+                    total_ad_cost = amount_df['리워드'] + amount_df['가구매 비용']
+                    amount_df['광고비율'] = np.where(
+                        amount_df['순매출'] > 0,
+                        (total_ad_cost / amount_df['순매출'] * 100).round(1),
+                        0.0
+                    )
+                
+                # 이윤율 = 총 순이익 ÷ 총 순매출
+                if '순이익' in amount_df.columns:
+                    amount_df['이윤율'] = np.where(
+                        amount_df['순매출'] > 0,
+                        (amount_df['순이익'] / amount_df['순매출'] * 100).round(1),
+                        0.0
+                    )
+                
+                # 비율 컬럼들만 추출하여 기존 DataFrame에 병합
+                ratio_cols = ['마진율', '광고비율', '이윤율']
+                ratio_cols_to_merge = [col for col in ratio_cols if col in amount_df.columns]
+                
+                if ratio_cols_to_merge:
+                    ratio_df = amount_df[grouping_keys + ratio_cols_to_merge]
+                    aggregated_df = aggregated_df.merge(ratio_df, on=grouping_keys, how='left')
+                    logging.info(f"-> 실제 금액 기준 비율 계산 완료: {ratio_cols_to_merge}")
+            else:
+                logging.warning("-> 순매출 데이터가 없거나 0이므로 비율 계산을 건너뜁니다.")
+        else:
+            logging.warning("-> 비율 계산에 필요한 금액 컬럼이 없습니다.")
+            
+    except Exception as e:
+        logging.error(f"-> 실제 금액 기준 비율 계산 중 오류: {e}")
+        # 기존 가중평균 방식으로 fallback
+        ratio_columns = ['마진율', '광고비율', '이윤율']
+        for ratio_col in ratio_columns:
+            if ratio_col in master_df.columns:
+                weighted_ratio = master_df.groupby(grouping_keys).apply(
+                    lambda x: safe_weighted_average(x, ratio_col, '순매출')
+                ).reset_index(name=ratio_col)
+                
+                aggregated_df = aggregated_df.merge(weighted_ratio, on=grouping_keys, how='left')
     
     logging.info(f"-> 가중평균 비율 계산 완료")
 
@@ -237,9 +299,19 @@ def create_weekly_report(start_date_str, end_date_str, download_folder=None):
     final_columns = ['스토어명'] + [col for col in config.COLUMNS_TO_KEEP if col in aggregated_df.columns]
     aggregated_df = aggregated_df[final_columns]
 
-    # 주간 리포트 파일 저장
+    # 주간 리포트 파일 저장 - 분류된 폴더에 직접 저장
     output_filename = f'주간_전체_통합_리포트_{start_date_str}_to_{end_date_str}.xlsx'
-    output_path = os.path.join(report_archive_dir, output_filename)
+    
+    # 주간 리포트 저장 경로 계산 (download_folder 매개변수 사용)
+    if download_folder:
+        validated_path = config.validate_directory(download_folder)
+        weekly_dir = os.path.join(validated_path, '리포트보관함', '주간통합리포트')
+    else:
+        weekly_dir = os.path.join(config.get_report_archive_dir(), '주간통합리포트')
+    
+    # 디렉토리가 없으면 생성
+    os.makedirs(weekly_dir, exist_ok=True)
+    output_path = os.path.join(weekly_dir, output_filename)
 
     try:
         with pd.ExcelWriter(output_path, engine='xlsxwriter') as writer:
