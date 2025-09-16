@@ -25,6 +25,7 @@ except ImportError:
 
 # Import the existing modules
 from modules import config, file_handler, report_generator, weekly_reporter
+from modules.compatibility import set_engine, get_current_engine
 
 # --- UI Styling Classes ---
 
@@ -1470,6 +1471,9 @@ class ModernSalesAutomationApp(QMainWindow):
         main_layout.addWidget(self.create_log_section())
         self.statusBar().showMessage("✅ 준비됨")
 
+        # 초기화 완료 후 성능 버튼 상태 업데이트
+        QTimer.singleShot(100, self.update_performance_buttons)
+
     def create_header(self):
         header_layout = QHBoxLayout()
         icon_label = QLabel("📊"); title_label = QLabel("판매 데이터 자동화")
@@ -1489,6 +1493,39 @@ class ModernSalesAutomationApp(QMainWindow):
         self.password_input = QLineEdit("1234"); self.password_input.setEchoMode(QLineEdit.Password)
         self.password_input.textChanged.connect(self.update_password)
         form_layout.addWidget(QLabel("주문조회 파일 암호:"), 1, 0); form_layout.addWidget(self.password_input, 1, 1)
+
+        # Polars 엔진 설정 추가
+        self.polars_checkbox = QCheckBox("🚀 Polars 엔진 사용 (고성능 모드)")
+        self.polars_checkbox.setStyleSheet("""
+            QCheckBox {
+                font-size: 14px;
+                font-weight: 600;
+                color: #059669;
+                padding: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+            }
+            QCheckBox::indicator:unchecked {
+                border: 2px solid #d1d5db;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QCheckBox::indicator:checked {
+                border: 2px solid #059669;
+                border-radius: 4px;
+                background-color: #059669;
+                image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOSIgdmlld0JveD0iMCAwIDEyIDkiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xIDQuNUw0LjUgOEwxMSAxIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4K);
+            }
+        """)
+        self.polars_checkbox.clicked.connect(self.toggle_polars_engine)
+        self.polars_checkbox.setToolTip("Polars 엔진을 사용하면 대용량 데이터 처리 성능이 10-100배 향상됩니다.")
+
+        # Polars 설정을 별도 행에 추가
+        form_layout.addWidget(QLabel("데이터 처리 엔진:"), 2, 0)
+        form_layout.addWidget(self.polars_checkbox, 2, 1)
+
         layout.addLayout(form_layout)
         
         control_layout = QHBoxLayout()
@@ -1501,6 +1538,13 @@ class ModernSalesAutomationApp(QMainWindow):
         
         control_layout.addWidget(self.start_btn); control_layout.addWidget(self.stop_btn); control_layout.addWidget(self.manual_btn)
         control_layout.addWidget(self.reward_btn); control_layout.addWidget(self.purchase_btn); control_layout.addWidget(self.weekly_report_btn)
+
+        # 성능 벤치마크 버튼 추가
+        self.benchmark_btn = AppleStyleButton("⚡ 성능 벤치마크", "fa5s.tachometer-alt", "#9333ea")
+        self.benchmark_btn.clicked.connect(self.run_performance_benchmark)
+        self.benchmark_btn.setToolTip("Pandas vs Polars 성능 비교 테스트를 실행합니다.")
+        control_layout.addWidget(self.benchmark_btn)
+
         control_layout.addStretch()
         layout.addLayout(control_layout)
         return settings_card
@@ -1560,6 +1604,85 @@ class ModernSalesAutomationApp(QMainWindow):
 
     def update_password(self):
         self.password = self.password_input.text()
+
+    def toggle_polars_engine(self):
+        """Polars 엔진 토글"""
+        use_polars = self.polars_checkbox.isChecked()
+        set_engine(use_polars)
+
+        current_engine = get_current_engine()
+        engine_status = "활성화" if use_polars else "비활성화"
+
+        self.update_log(f"[INFO] 🚀 Polars 엔진 {engine_status}: {current_engine} 사용")
+
+        if use_polars:
+            self.update_log(f"[INFO] ⚡ 고성능 모드 활성화 - 대용량 데이터 처리 속도가 향상됩니다.")
+        else:
+            self.update_log(f"[INFO] 📊 표준 모드 활성화 - Pandas 엔진을 사용합니다.")
+
+        # 성능 벤치마크 버튼 표시 여부 업데이트
+        self.update_performance_buttons()
+
+    def update_performance_buttons(self):
+        """성능 벤치마크 버튼 활성화 상태 업데이트"""
+        # 벤치마크 버튼은 항상 활성화 (Pandas vs Polars 비교를 위해)
+        if hasattr(self, 'benchmark_btn'):
+            self.benchmark_btn.setEnabled(True)
+            tooltip_text = "Pandas vs Polars 성능 비교 테스트를 실행합니다."
+            if self.polars_checkbox.isChecked():
+                tooltip_text += " (현재: Polars 모드)"
+            else:
+                tooltip_text += " (현재: Pandas 모드)"
+            self.benchmark_btn.setToolTip(tooltip_text)
+
+    def run_performance_benchmark(self):
+        """성능 벤치마크 실행"""
+        try:
+            # 성능 테스트 스크립트 실행
+            import subprocess
+            import os
+
+            test_script_path = os.path.join(config.BASE_DIR, 'test_polars_performance.py')
+
+            if not os.path.exists(test_script_path):
+                QMessageBox.warning(
+                    self,
+                    "파일 없음",
+                    f"성능 테스트 스크립트를 찾을 수 없습니다:\n{test_script_path}"
+                )
+                return
+
+            # 확인 다이얼로그
+            reply = QMessageBox.question(
+                self,
+                "성능 벤치마크 실행",
+                "Pandas vs Polars 성능 비교 테스트를 실행하시겠습니까?\n\n"
+                "• 테스트 데이터를 생성하여 두 엔진의 성능을 비교합니다\n"
+                "• 데이터 로딩, 필터링, 그룹화, 조인 등을 테스트합니다\n"
+                "• 결과는 별도 창에서 확인할 수 있습니다",
+                QMessageBox.Yes | QMessageBox.No
+            )
+
+            if reply == QMessageBox.Yes:
+                self.update_log("[INFO] ⚡ 성능 벤치마크 시작...")
+
+                # 별도 프로세스로 실행 (GUI가 블록되지 않도록)
+                if os.name == 'nt':  # Windows
+                    subprocess.Popen([
+                        'python', test_script_path
+                    ], cwd=config.BASE_DIR, creationflags=subprocess.CREATE_NEW_CONSOLE)
+                else:  # Unix/Linux/Mac
+                    subprocess.Popen([
+                        'python', test_script_path
+                    ], cwd=config.BASE_DIR)
+
+                self.update_log("[INFO] 📊 성능 벤치마크가 별도 창에서 실행됩니다.")
+
+        except Exception as e:
+            error_msg = f"성능 벤치마크 실행 중 오류: {str(e)}"
+            self.update_log(f"[ERROR] {error_msg}")
+            self.on_error(error_msg)
+            QMessageBox.critical(self, "오류", error_msg)
 
     def start_monitoring(self):
         if not self.download_folder_path:
@@ -1728,11 +1851,21 @@ class ModernSalesAutomationApp(QMainWindow):
                 self.download_folder_path = folder_path
                 self.folder_label.setText(f"📁 {folder_path}")
             
-            # 패스워드 복원 (보안상 저장하지 않음)
-            
+            # Polars 엔진 설정 복원
+            use_polars = settings.value("use_polars", True, type=bool)  # 기본값: True (Polars 사용)
+            self.polars_checkbox.setChecked(use_polars)
+            set_engine(use_polars)
+
+            # 현재 엔진 상태를 로그에 표시
+            current_engine = get_current_engine()
+            self.update_log(f"[INFO] 📊 데이터 처리 엔진: {current_engine}")
+
         except Exception as e:
             import logging
             logging.error(f"설정 로드 중 오류: {e}")
+            # 기본값 설정
+            self.polars_checkbox.setChecked(True)
+            set_engine(True)
     
     def save_settings(self):
         """애플리케이션 설정 저장"""
@@ -1745,7 +1878,10 @@ class ModernSalesAutomationApp(QMainWindow):
             # 다운로드 폴더 경로 저장
             if self.download_folder_path:
                 settings.setValue("download_folder", self.download_folder_path)
-            
+
+            # Polars 엔진 설정 저장
+            settings.setValue("use_polars", self.polars_checkbox.isChecked())
+
         except Exception as e:
             import logging
             logging.error(f"설정 저장 중 오류: {e}")

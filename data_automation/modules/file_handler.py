@@ -9,6 +9,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from . import config
 from . import report_generator
+from .compatibility import get_current_engine
 
 STOP_FLAG_FILE = os.path.join(config.BASE_DIR, 'stop.flag')
 
@@ -122,7 +123,27 @@ def _check_and_process_data(store, date):
             logging.info(f"🔄 [{store}, {date}] 리포트 생성을 시작합니다...")
             # 개별 리포트만 생성 (파일 이동은 하지 않음)
             try:
-                processed_groups = report_generator.generate_individual_reports()
+                # 현재 설정된 엔진에 따라 적절한 generator 사용
+                current_engine = get_current_engine()
+                logging.info(f"🚀 [{store}, {date}] 데이터 처리 엔진: {current_engine}")
+
+                if current_engine == "Polars":
+                    # Polars 엔진 사용
+                    try:
+                        from . import report_generator_polars
+                        processed_groups = report_generator_polars.generate_individual_reports_polars()
+                        logging.info(f"⚡ [{store}, {date}] Polars 엔진으로 고성능 처리 완료")
+                    except ImportError as e:
+                        logging.warning(f"⚠️ [{store}, {date}] Polars 모듈 로드 실패, Pandas로 폴백: {e}")
+                        processed_groups = report_generator.generate_individual_reports()
+                    except Exception as e:
+                        logging.warning(f"⚠️ [{store}, {date}] Polars 처리 실패, Pandas로 폴백: {e}")
+                        processed_groups = report_generator.generate_individual_reports()
+                else:
+                    # Pandas 엔진 사용
+                    processed_groups = report_generator.generate_individual_reports()
+                    logging.info(f"📊 [{store}, {date}] Pandas 엔진으로 표준 처리 완료")
+
                 if processed_groups:
                     logging.info(f"✅ [{store}, {date}] 리포트 생성 성공! 처리된 그룹: {processed_groups}")
                     
