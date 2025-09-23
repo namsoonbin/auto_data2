@@ -1,0 +1,26 @@
+2025-09-23 11:18:58,881 - System - INFO - info:160 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-23 11:18:58,882 - Test - INFO - info:160 - Test message - {'test': True}
+2025-09-23 11:18:59,564 - Updater - INFO - info:160 - 업데이터 초기화 - {'current_version': '1.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-23 11:19:54,273 - System - INFO - info:160 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-23 11:19:54,274 - MainApp - INFO - info:160 - Main app test
+2025-09-23 11:19:54,275 - Updater - INFO - info:160 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-23 11:22:59,290 - System - INFO - info:160 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-23 11:22:59,304 - Updater - INFO - info:160 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-23 11:23:12,472 - System - INFO - info:160 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-23 11:23:12,474 - Updater - INFO - info:160 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-23 11:53:03,789 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-23 11:53:03,791 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-23 11:53:06,800 - MainApp - INFO - info:178 - 자동 업데이트 확인 시작
+2025-09-23 11:53:06,800 - Updater - INFO - info:178 - 업데이트 확인 시작
+2025-09-23 11:53:07,122 - Updater - ERROR - error:192 - 업데이트 확인 실패 - {'error': '404 Client Error: Not Found for url: https://api.github.com/repos/your-repo/releases'}
+2025-09-23 11:53:07,123 - MainApp - INFO - info:178 - 현재 최신 버전입니다
+2025-09-23 11:53:58,617 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-23 11:53:58,619 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-23 11:54:01,620 - MainApp - INFO - info:178 - 자동 업데이트 확인 시작
+2025-09-23 11:54:01,620 - Updater - INFO - info:178 - 업데이트 확인 시작
+2025-09-23 11:54:01,889 - Updater - ERROR - error:192 - 업데이트 확인 실패 - {'error': '404 Client Error: Not Found for url: https://api.github.com/repos/your-repo/releases'}
+2025-09-23 11:54:01,889 - MainApp - INFO - info:178 - 현재 최신 버전입니다
+2025-09-23 11:54:02,373 - MainApp - INFO - info:178 - [INFO] 🔄 업데이트를 확인하고 있습니다...
+2025-09-23 11:54:02,378 - Updater - INFO - info:178 - 업데이트 확인 시작
+2025-09-23 11:54:02,416 - Updater - ERROR - error:192 - 업데이트 확인 실패 - {'error': '404 Client Error: Not Found for url: https://api.github.com/repos/your-repo/releases'}
+2025-09-23 11:54:02,417 - MainApp - ERROR - error:192 - [ERROR] 업데이트 확인 실패: cannot access local variable 'QMessageBox' where it is not associated with a value

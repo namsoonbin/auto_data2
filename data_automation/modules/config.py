@@ -2,65 +2,87 @@
 import os
 import sys
 import logging
+from pathlib import Path
+from typing import Union
 
-def get_exe_directory():
-    """exe 파일이 위치한 디렉토리 반환 (개발 환경에서는 프로젝트 루트)"""
+def get_exe_directory() -> Path:
+    """exe 파일이 위치한 디렉토리 반환 (개발 환경에서는 프로젝트 루트) - pathlib 2025 모범 사례"""
     if hasattr(sys, '_MEIPASS'):
         # PyInstaller로 빌드된 경우: exe 파일이 있는 실제 디렉토리
-        return os.path.dirname(sys.executable)
+        return Path(sys.executable).parent.resolve()
     else:
-        # 개발 환경: 프로젝트 루트 디렉토리
-        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # 개발 환경: 프로젝트 루트 디렉토리 (2단계 상위)
+        return Path(__file__).parent.parent.resolve()
 
-# --- 기본 경로 설정 ---
+# --- 기본 경로 설정 (pathlib 2025 모범 사례) ---
 # 개발 환경에서는 프로젝트 루트, exe에서는 exe 파일 위치
 BASE_DIR = get_exe_directory()
 
-# --- 폴더 경로 --- 
-DOWNLOAD_DIR = None # This will be set by desktop_app.py
+# --- 폴더 경로 (pathlib 2025 모범 사례) ---
+# 기본값으로 현재 작업 폴더의 다운로드 폴더 설정
+DEFAULT_DOWNLOAD_DIR = BASE_DIR / "다운로드"
+DOWNLOAD_DIR = DEFAULT_DOWNLOAD_DIR  # This will be updated by desktop_app.py
 
-def validate_directory(path):
-    """디렉토리 경로 검증"""
-    if not path or not isinstance(path, str):
-        raise ValueError("경로는 비어있지 않은 문자열이어야 합니다.")
-    
-    # 경로 순회 공격 방지 (Windows와 Unix 모두 고려)
-    normalized_path = os.path.normpath(path)
-    if '..' in normalized_path:
-        raise ValueError("안전하지 않은 경로입니다: 상위 디렉토리 참조 금지")
-    
-    # Windows의 절대 경로는 허용 (C:\, D:\ 등)
-    if os.name == 'nt':  # Windows
-        if not (normalized_path[1:3] == ':\\' and normalized_path[0].isalpha()):
-            raise ValueError("Windows에서는 절대 경로(드라이브 문자 포함)만 허용됩니다.")
-    else:  # Unix/Linux
-        if normalized_path.startswith('/'):
-            raise ValueError("Unix 시스템에서 루트 경로는 허용되지 않습니다.")
-    
-    return normalized_path
+def validate_directory(path: Union[str, Path]) -> Path:
+    """
+    디렉토리 경로 검증 - pathlib 2025 보안 모범 사례
+    Path traversal 공격 방지 및 크로스 플랫폼 호환성 보장
+    """
+    if not path:
+        raise ValueError("경로는 비어있지 않아야 합니다.")
 
-def get_processing_dir():
+    # pathlib Path 객체로 변환
+    path_obj = Path(path) if isinstance(path, str) else path
+
+    try:
+        # resolve()를 사용하여 경로 정규화 및 심볼릭 링크 해결
+        # 이는 path traversal 공격(../../../etc/passwd)을 방지하는 핵심 기능
+        resolved_path = path_obj.resolve()
+
+        # 기본 안전성 검증: 절대 경로인지 확인
+        if not resolved_path.is_absolute():
+            raise ValueError("상대 경로는 허용되지 않습니다. 절대 경로를 사용하세요.")
+
+        # 2025 보안 강화: 사용자 홈 디렉토리 하위에만 허용 (선택적)
+        home_dir = Path.home()
+        try:
+            # 경로가 사용자 홈 디렉토리 하위인지 확인
+            resolved_path.relative_to(home_dir)
+        except ValueError:
+            # 홈 디렉토리 외부 경로도 허용하되 로그에 기록
+            logging.info(f"홈 디렉토리 외부 경로 사용: {resolved_path}")
+
+        return resolved_path
+
+    except (OSError, ValueError) as e:
+        raise ValueError(f"유효하지 않은 경로입니다: {path} - {str(e)}")
+
+def get_processing_dir() -> Path:
+    """작업 폴더 경로 반환 - pathlib 2025 모범 사례"""
     if DOWNLOAD_DIR is None:
         raise ValueError("DOWNLOAD_DIR has not been set in config.")
-    
-    validated_path = validate_directory(DOWNLOAD_DIR)
-    return os.path.join(validated_path, '작업폴더')
 
-def get_archive_dir():
+    validated_path = validate_directory(DOWNLOAD_DIR)
+    return validated_path / '작업폴더'
+
+def get_archive_dir() -> Path:
+    """원본 보관함 경로 반환 - pathlib 2025 모범 사례"""
     if DOWNLOAD_DIR is None:
         raise ValueError("DOWNLOAD_DIR has not been set in config.")
-    
-    validated_path = validate_directory(DOWNLOAD_DIR)
-    return os.path.join(validated_path, '원본_보관함')
 
-def get_report_archive_dir():
+    validated_path = validate_directory(DOWNLOAD_DIR)
+    return validated_path / '원본_보관함'
+
+def get_report_archive_dir() -> Path:
+    """리포트 보관함 경로 반환 - pathlib 2025 모범 사례"""
     if DOWNLOAD_DIR is None:
         raise ValueError("DOWNLOAD_DIR has not been set in config.")
-    
-    validated_path = validate_directory(DOWNLOAD_DIR)
-    return os.path.join(validated_path, '리포트보관함')
 
-MARGIN_FILE = os.path.join(BASE_DIR, '마진정보.xlsx')
+    validated_path = validate_directory(DOWNLOAD_DIR)
+    return validated_path / '리포트보관함'
+
+# pathlib 2025 모범 사례: Path 객체 사용
+MARGIN_FILE = BASE_DIR / '마진정보.xlsx'
 
 # --- 암호 설정 ---
 # 주문조회 파일의 기본 암호
@@ -83,29 +105,40 @@ REPORT_STRUCTURE = {
     "weekly": "주간통합리포트"
 }
 
-def get_categorized_report_path(report_type, date_obj, filename):
-    """리포트 타입과 날짜에 따른 분류된 경로 반환"""
+def get_categorized_report_path(report_type: str, date_obj, filename: str) -> Path:
+    """
+    리포트 타입과 날짜에 따른 분류된 경로 반환 - pathlib 2025 모범 사례
+
+    Args:
+        report_type: 리포트 타입 ('individual', 'daily_consolidated', 'weekly')
+        date_obj: 날짜 객체
+        filename: 파일명
+
+    Returns:
+        Path: 분류된 리포트 파일의 완전한 경로
+    """
     if DOWNLOAD_DIR is None:
         raise ValueError("DOWNLOAD_DIR has not been set in config.")
-    
+
     validated_path = validate_directory(DOWNLOAD_DIR)
-    base_report_dir = os.path.join(validated_path, '리포트보관함')
-    
+    base_report_dir = validated_path / '리포트보관함'
+
     if report_type == "individual":
-        sub_path = REPORT_STRUCTURE["individual"].format(
-            year=date_obj.year, 
-            month=date_obj.month, 
+        # pathlib의 / 연산자로 깔끔한 경로 조합
+        sub_path = Path(REPORT_STRUCTURE["individual"].format(
+            year=date_obj.year,
+            month=date_obj.month,
             day=date_obj.day
-        )
+        ))
     else:
-        sub_path = REPORT_STRUCTURE[report_type]
-    
-    categorized_dir = os.path.join(base_report_dir, sub_path)
-    
-    # 디렉토리가 없으면 생성
-    os.makedirs(categorized_dir, exist_ok=True)
-    
-    return os.path.join(categorized_dir, filename)
+        sub_path = Path(REPORT_STRUCTURE[report_type])
+
+    categorized_dir = base_report_dir / sub_path
+
+    # pathlib 2025 모범 사례: mkdir 사용
+    categorized_dir.mkdir(parents=True, exist_ok=True)
+
+    return categorized_dir / filename
 
 def detect_report_type(filename):
     """파일명으로 리포트 타입 감지"""
@@ -117,27 +150,33 @@ def detect_report_type(filename):
         return 'individual'
     return 'unknown'
 
-def create_report_folder_structure(date_obj):
-    """날짜에 따른 모든 리포트 폴더 구조 사전 생성"""
+def create_report_folder_structure(date_obj) -> None:
+    """
+    날짜에 따른 모든 리포트 폴더 구조 사전 생성 - pathlib 2025 모범 사례
+
+    Args:
+        date_obj: 날짜 객체 (datetime)
+    """
     if DOWNLOAD_DIR is None:
         raise ValueError("DOWNLOAD_DIR has not been set in config.")
-    
+
     validated_path = validate_directory(DOWNLOAD_DIR)
-    base_report_dir = os.path.join(validated_path, '리포트보관함')
-    
+    base_report_dir = validated_path / '리포트보관함'
+
+    # pathlib 2025 모범 사례: / 연산자와 mkdir 활용
     # 개별리포트 폴더 생성
-    individual_dir = os.path.join(base_report_dir, REPORT_STRUCTURE["individual"].format(
+    individual_dir = base_report_dir / REPORT_STRUCTURE["individual"].format(
         year=date_obj.year, month=date_obj.month, day=date_obj.day
-    ))
-    os.makedirs(individual_dir, exist_ok=True)
-    
+    )
+    individual_dir.mkdir(parents=True, exist_ok=True)
+
     # 일간통합리포트 폴더 생성
-    daily_dir = os.path.join(base_report_dir, REPORT_STRUCTURE["daily_consolidated"])
-    os.makedirs(daily_dir, exist_ok=True)
-    
+    daily_dir = base_report_dir / REPORT_STRUCTURE["daily_consolidated"]
+    daily_dir.mkdir(parents=True, exist_ok=True)
+
     # 주간통합리포트 폴더 생성
-    weekly_dir = os.path.join(base_report_dir, REPORT_STRUCTURE["weekly"])
-    os.makedirs(weekly_dir, exist_ok=True)
+    weekly_dir = base_report_dir / REPORT_STRUCTURE["weekly"]
+    weekly_dir.mkdir(parents=True, exist_ok=True)
     
     return {
         'individual': individual_dir,

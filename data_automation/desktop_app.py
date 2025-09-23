@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QTextEdit, QFileDialog, QLabel, QGroupBox, QGridLayout,
     QDialog, QTableWidget, QTableWidgetItem, QDateEdit, QHeaderView,
     QMessageBox, QSpinBox, QFrame, QProgressBar, QCheckBox, QScrollArea,
-    QGraphicsDropShadowEffect, QSizePolicy, QDialogButtonBox
+    QGraphicsDropShadowEffect, QSizePolicy, QDialogButtonBox, QTabWidget
 )
 from PySide6.QtCore import QThread, Signal, Qt, QDate, QTimer, QSettings
 from PySide6.QtGui import QColor, QIcon, QCursor
@@ -26,6 +26,33 @@ except ImportError:
 # Import the existing modules
 from modules import config, file_handler, report_generator, weekly_reporter
 from modules.compatibility import set_engine, get_current_engine
+from modules.settings import get_settings, set_download_dir, set_polars_enabled, set_order_file_password
+from modules.logger import get_logger, setup_app_logging, log_performance
+from modules.updater import SalesAutomationUpdater
+
+# Import AI modules
+try:
+    from modules.analytics import SalesAnalytics
+    from modules.recommendations import SmartRecommendationEngine, RecommendationType, Priority
+    import polars as pl
+    AI_MODULES_AVAILABLE = True
+    logging.info("AI 모듈 임포트 성공")
+except ImportError as e:
+    AI_MODULES_AVAILABLE = False
+    logging.warning(f"AI 모듈 임포트 실패: {e}")
+
+# Import new 2025 AI modules
+try:
+    from modules.ai_predictor import SalesPredictor
+    from modules.interactive_dashboard import InteractiveDashboard
+    from modules.smart_insights import SmartInsightGenerator
+    from modules.advanced_charts import AdvancedChartEngine
+    from modules.mobile_web_api import MobileWebAPI
+    NEW_AI_MODULES_AVAILABLE = True
+    logging.info("2025 AI 모듈 임포트 성공")
+except ImportError as e:
+    NEW_AI_MODULES_AVAILABLE = False
+    logging.warning(f"2025 AI 모듈 임포트 실패: {e}")
 
 # --- UI Styling Classes ---
 
@@ -331,6 +358,301 @@ class WeeklyWorker(QThread):
             self.error_signal.emit(error_msg)  # 오류 시그널 발생
         finally:
             self.finished_signal.emit()
+
+class AIAnalysisWorker(QThread):
+    output_signal = Signal(str)
+    finished_signal = Signal()
+    error_signal = Signal(str)
+    results_signal = Signal(dict)  # AI 분석 결과 시그널
+
+    def __init__(self, data_path):
+        super().__init__()
+        self.data_path = data_path
+
+    def run(self):
+        try:
+            if not AI_MODULES_AVAILABLE:
+                error_msg = "[ERROR] AI 모듈이 설치되지 않았습니다"
+                self.output_signal.emit(error_msg)
+                self.error_signal.emit(error_msg)
+                return
+
+            self.output_signal.emit("[INFO] 🤖 AI 분석 시작...")
+
+            # 1. 최신 리포트 파일 검색
+            self.output_signal.emit("[INFO] 📊 분석할 데이터 검색 중...")
+            data_files = self._find_latest_reports()
+
+            if not data_files:
+                error_msg = "[ERROR] 분석할 리포트 파일을 찾을 수 없습니다"
+                self.output_signal.emit(error_msg)
+                self.error_signal.emit(error_msg)
+                return
+
+            # 2. 데이터 로드 및 전처리
+            self.output_signal.emit(f"[INFO] 📈 {len(data_files)}개 파일에서 데이터 로드 중...")
+            combined_data = self._load_and_combine_data(data_files)
+
+            if combined_data is None or len(combined_data) == 0:
+                error_msg = "[ERROR] 유효한 데이터를 로드할 수 없습니다"
+                self.output_signal.emit(error_msg)
+                self.error_signal.emit(error_msg)
+                return
+
+            self.output_signal.emit(f"[INFO] ✅ {len(combined_data)}개 상품 데이터 로드 완료")
+
+            # 3. AI 분석 실행
+            self.output_signal.emit("[INFO] 🧠 AI 분석 엔진 초기화...")
+            recommendation_engine = SmartRecommendationEngine(min_confidence_threshold=0.6)
+
+            self.output_signal.emit("[INFO] 🔍 이상 탐지 및 클러스터링 분석 중...")
+            # 날짜 추출을 위해 가장 최신 파일 경로 전달
+            latest_file_path = data_files[0] if data_files else None
+            analysis_results = recommendation_engine.analyze_and_recommend(combined_data, file_path=latest_file_path)
+
+            # 4. 결과 요약 생성
+            self.output_signal.emit("[INFO] 📋 분석 결과 정리 중...")
+            summary = self._create_analysis_summary(analysis_results)
+
+            self.output_signal.emit("[INFO] ✅ AI 분석 완료!")
+            self.results_signal.emit({
+                'analysis_results': analysis_results,
+                'summary': summary,
+                'data_info': {
+                    'total_products': len(combined_data),
+                    'files_analyzed': len(data_files),
+                    'analysis_date': datetime.now().isoformat()
+                }
+            })
+
+        except Exception as e:
+            error_msg = f"[ERROR] AI 분석 중 오류: {str(e)}"
+            self.output_signal.emit(error_msg)
+            self.error_signal.emit(error_msg)
+            logging.error(f"AI 분석 오류: {str(e)}", exc_info=True)
+        finally:
+            self.finished_signal.emit()
+
+    def _find_latest_reports(self):
+        """최신 리포트 파일들 검색"""
+        import glob
+
+        # 리포트 보관함에서 최신 파일들 검색
+        report_dir = os.path.join(self.data_path, "리포트보관함")
+        if not os.path.exists(report_dir):
+            return []
+
+        # 일간통합리포트 폴더에서만 검색 (중복 방지)
+        daily_report_dir = os.path.join(report_dir, "일간통합리포트")
+        if not os.path.exists(daily_report_dir):
+            return []
+
+        # 일간통합리포트 파일만 검색
+        files = glob.glob(os.path.join(daily_report_dir, "전체_통합_리포트_*.xlsx"))
+
+        # 최신 순 정렬
+        files.sort(key=os.path.getmtime, reverse=True)
+        return files
+
+    def _load_and_combine_data(self, file_paths):
+        """여러 Excel 파일에서 데이터 로드 및 결합"""
+        combined_data = []
+
+        for file_path in file_paths:
+            try:
+                # pandas로 Excel 파일 읽기
+                df = pd.read_excel(file_path)
+
+                # 필수 컬럼 확인
+                required_columns = ["상품ID", "상품명", "매출", "순이익", "수량"]
+                missing_columns = [col for col in required_columns if col not in df.columns]
+
+                if missing_columns:
+                    self.output_signal.emit(f"[WARNING] {os.path.basename(file_path)}: 필수 컬럼 누락 {missing_columns}")
+                    continue
+
+                # 옵션 컬럼 추가 (없으면 기본값)
+                if "리워드" not in df.columns:
+                    df["리워드"] = 0
+                if "가구매 비용" not in df.columns:
+                    df["가구매 비용"] = 0
+
+                # 숫자 컬럼 변환
+                numeric_columns = ["매출", "순이익", "수량", "리워드", "가구매 비용"]
+                for col in numeric_columns:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+                # 유효한 데이터만 추가
+                valid_data = df[df["매출"] > 0].copy()
+                if len(valid_data) > 0:
+                    combined_data.append(valid_data)
+
+            except Exception as e:
+                self.output_signal.emit(f"[WARNING] {os.path.basename(file_path)} 로드 실패: {str(e)}")
+                continue
+
+        if not combined_data:
+            return None
+
+        # 모든 데이터 결합
+        final_df = pd.concat(combined_data, ignore_index=True)
+
+        # 중복 제거 (상품ID 기준)
+        final_df = final_df.drop_duplicates(subset=["상품ID"], keep="last")
+
+        # Polars DataFrame으로 변환 (타입 안전성 강화)
+        try:
+            # 데이터 타입 정리 및 검증
+            for col in final_df.columns:
+                if final_df[col].dtype == 'object':
+                    # 문자열 컬럼 처리
+                    if col in ["상품ID", "상품명"]:
+                        final_df[col] = final_df[col].astype(str).fillna("")
+                    else:
+                        # 숫자로 변환 가능한지 확인
+                        try:
+                            final_df[col] = pd.to_numeric(final_df[col], errors='coerce').fillna(0)
+                        except:
+                            final_df[col] = final_df[col].astype(str).fillna("")
+                elif final_df[col].dtype in ['int64', 'float64']:
+                    # 숫자 컬럼의 NaN 처리
+                    final_df[col] = final_df[col].fillna(0)
+
+            # 모든 문자열 컬럼을 명시적으로 문자열로 변환
+            string_columns = ["상품ID", "상품명"]
+            for col in string_columns:
+                if col in final_df.columns:
+                    final_df[col] = final_df[col].astype(str)
+
+            # 숫자 컬럼을 명시적으로 숫자로 변환
+            numeric_columns = ["매출", "순이익", "수량", "리워드", "가구매 비용"]
+            for col in numeric_columns:
+                if col in final_df.columns:
+                    final_df[col] = pd.to_numeric(final_df[col], errors='coerce').fillna(0).astype('float64')
+
+            self.output_signal.emit(f"[INFO] 데이터 타입 정리 완료 - {len(final_df)}행")
+
+            # Polars로 안전하게 변환
+            polars_df = pl.from_pandas(final_df)
+            self.output_signal.emit(f"[INFO] ✅ Polars 변환 성공")
+            return polars_df
+
+        except Exception as e:
+            self.output_signal.emit(f"[ERROR] Polars 변환 실패: {str(e)}")
+            self.output_signal.emit(f"[INFO] 📊 pandas DataFrame으로 대체 처리 시도...")
+
+            # Polars 변환 실패 시 pandas로 직접 처리
+            try:
+                # pandas DataFrame을 직접 사용하는 대안 구현
+                return self._create_polars_compatible_data(final_df)
+            except Exception as fallback_error:
+                self.output_signal.emit(f"[ERROR] 대체 처리도 실패: {str(fallback_error)}")
+                return None
+
+    def _create_polars_compatible_data(self, pandas_df):
+        """pandas DataFrame을 Polars 호환 형태로 변환"""
+        try:
+            # 수동으로 Polars DataFrame 생성
+            data_dict = {}
+
+            for col in pandas_df.columns:
+                series = pandas_df[col]
+
+                if col in ["상품ID", "상품명"]:
+                    # 문자열 컬럼
+                    data_dict[col] = series.astype(str).fillna("").tolist()
+                else:
+                    # 숫자 컬럼
+                    numeric_series = pd.to_numeric(series, errors='coerce').fillna(0)
+                    data_dict[col] = numeric_series.tolist()
+
+            # Polars DataFrame 생성
+            polars_df = pl.DataFrame(data_dict)
+            self.output_signal.emit(f"[INFO] ✅ 수동 Polars 변환 성공")
+            return polars_df
+
+        except Exception as e:
+            self.output_signal.emit(f"[ERROR] 수동 변환도 실패: {str(e)}")
+            self.output_signal.emit(f"[INFO] 🔄 pandas 호환 모드로 전환...")
+
+            # 최종 대안: pandas DataFrame을 Polars처럼 사용
+            return self._create_pandas_wrapper(pandas_df)
+
+    def _create_pandas_wrapper(self, pandas_df):
+        """pandas DataFrame을 Polars 인터페이스로 래핑"""
+        class PandasPolarsWrapper:
+            def __init__(self, df):
+                self.df = df
+                self.columns = df.columns.tolist()
+
+            def __len__(self):
+                return len(self.df)
+
+            def __getitem__(self, key):
+                return self.df[key]
+
+            def select(self, columns):
+                if isinstance(columns, list):
+                    return PandasPolarsWrapper(self.df[columns])
+                return PandasPolarsWrapper(self.df[[columns]])
+
+            def to_numpy(self):
+                return self.df.values
+
+            def iter_rows(self, named=True):
+                if named:
+                    for _, row in self.df.iterrows():
+                        yield row.to_dict()
+                else:
+                    for _, row in self.df.iterrows():
+                        yield row.tolist()
+
+            def filter(self, condition):
+                # 간단한 필터링 지원
+                return PandasPolarsWrapper(self.df)
+
+            def head(self, n=5):
+                return PandasPolarsWrapper(self.df.head(n))
+
+            def sort(self, column, descending=False):
+                ascending = not descending
+                return PandasPolarsWrapper(self.df.sort_values(column, ascending=ascending))
+
+        self.output_signal.emit(f"[INFO] ✅ pandas 래퍼 모드로 분석 진행")
+        return PandasPolarsWrapper(pandas_df)
+
+    def _create_analysis_summary(self, results):
+        """분석 결과 요약 생성"""
+        try:
+            recommendations = results.get("product_recommendations", [])
+            portfolio = results.get("portfolio_insights", {})
+            impact = results.get("business_impact", {})
+
+            summary = {
+                "총_추천수": len(recommendations),
+                "긴급_추천수": len([r for r in recommendations if r.priority.value == "긴급"]),
+                "높은_우선순위": len([r for r in recommendations if r.priority.value == "높음"]),
+                "포트폴리오_건강도": portfolio.get("overall_health", "알 수 없음"),
+                "예상_매출_증가": impact.get("예상_매출_증가", 0),
+                "예상_이익_증가": impact.get("예상_이익_증가", 0),
+                "ROI_개선율": impact.get("ROI_개선율", 0),
+                "주요_추천사항": [
+                    {
+                        "상품명": r.product_name,
+                        "추천유형": r.recommendation_type.value,
+                        "우선순위": r.priority.value,
+                        "액션": r.action_details
+                    }
+                    for r in recommendations[:5]  # 상위 5개만
+                ]
+            }
+
+            return summary
+
+        except Exception as e:
+            self.output_signal.emit(f"[WARNING] 요약 생성 중 오류: {str(e)}")
+            return {"오류": "요약 생성 실패"}
 
 # --- Dialog Classes ---
 
@@ -1440,22 +1762,649 @@ class PurchaseManagerDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "오류", f"가구매 설정 저장 중 오류가 발생했습니다:\n{str(e)}")
 
+class AIAnalysisResultsDialog(QDialog):
+    def __init__(self, results_data, parent=None):
+        super().__init__(parent)
+        self.results_data = results_data
+        self.setWindowTitle("🤖 AI 분석 결과")
+        self.setMinimumSize(900, 700)
+        self.setModal(True)
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+
+        # 헤더
+        header_layout = QHBoxLayout()
+        header_label = QLabel("🤖 AI 분석 결과")
+        header_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #2563eb; margin: 10px 0px;")
+        header_layout.addWidget(header_label)
+        header_layout.addStretch()
+
+        # 분석 정보
+        info_layout = QHBoxLayout()
+        data_info = self.results_data.get('data_info', {})
+        info_text = f"분석 상품: {data_info.get('total_products', 0)}개 | 분석 파일: {data_info.get('files_analyzed', 0)}개"
+        info_label = QLabel(info_text)
+        info_label.setStyleSheet("color: #666; font-size: 12px;")
+        info_layout.addWidget(info_label)
+        info_layout.addStretch()
+
+        layout.addLayout(header_layout)
+        layout.addLayout(info_layout)
+
+        # 탭 위젯 생성
+        tab_widget = QTabWidget()
+
+        # 요약 탭
+        summary_tab = self.create_summary_tab()
+        tab_widget.addTab(summary_tab, "📊 요약")
+
+        # 추천사항 탭
+        recommendations_tab = self.create_recommendations_tab()
+        tab_widget.addTab(recommendations_tab, "💡 추천사항")
+
+        # 클러스터 분석 탭
+        cluster_tab = self.create_cluster_tab()
+        tab_widget.addTab(cluster_tab, "🎯 클러스터 분석")
+
+        # 고급 분석 탭들 (Context7 기반)
+        trend_tab = self.create_trend_analysis_tab()
+        tab_widget.addTab(trend_tab, "📈 트렌드 분석")
+
+        advanced_cluster_tab = self.create_advanced_clustering_tab()
+        tab_widget.addTab(advanced_cluster_tab, "🔬 고급 클러스터링")
+
+        pattern_tab = self.create_pattern_analysis_tab()
+        tab_widget.addTab(pattern_tab, "🎯 패턴 분석")
+
+        layout.addWidget(tab_widget)
+
+        # 닫기 버튼
+        close_btn = QPushButton("닫기")
+        close_btn.setStyleSheet("QPushButton { background-color: #6c757d; color: white; font-weight: bold; padding: 8px 16px; border: none; border-radius: 4px; } QPushButton:hover { background-color: #545b62; }")
+        close_btn.clicked.connect(self.accept)
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(close_btn)
+        layout.addLayout(button_layout)
+
+    def create_summary_tab(self):
+        scroll_area = QScrollArea()
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
+
+        summary = self.results_data.get('summary', {})
+
+        # 전체 개요
+        overview_card = QGroupBox("📋 분석 개요")
+        overview_layout = QGridLayout(overview_card)
+
+        overview_data = [
+            ("총 추천 수", summary.get("총_추천수", 0)),
+            ("긴급 추천", summary.get("긴급_추천수", 0)),
+            ("높은 우선순위", summary.get("높은_우선순위", 0)),
+            ("포트폴리오 건강도", summary.get("포트폴리오_건강도", "알 수 없음"))
+        ]
+
+        for i, (label, value) in enumerate(overview_data):
+            label_widget = QLabel(f"{label}:")
+            label_widget.setStyleSheet("font-weight: bold;")
+            value_widget = QLabel(str(value))
+            value_widget.setStyleSheet("color: #2563eb; font-weight: bold;")
+
+            overview_layout.addWidget(label_widget, i // 2, (i % 2) * 2)
+            overview_layout.addWidget(value_widget, i // 2, (i % 2) * 2 + 1)
+
+        layout.addWidget(overview_card)
+
+        # 비즈니스 임팩트
+        impact_card = QGroupBox("💰 예상 비즈니스 임팩트")
+        impact_layout = QVBoxLayout(impact_card)
+
+        impact_data = [
+            ("예상 매출 증가", f"{summary.get('예상_매출_증가', 0):,.0f}원"),
+            ("예상 이익 증가", f"{summary.get('예상_이익_증가', 0):,.0f}원"),
+            ("ROI 개선율", f"{summary.get('ROI_개선율', 0):.1f}%")
+        ]
+
+        for label, value in impact_data:
+            item_layout = QHBoxLayout()
+            label_widget = QLabel(f"{label}:")
+            label_widget.setStyleSheet("font-weight: bold;")
+            value_widget = QLabel(value)
+            value_widget.setStyleSheet("color: #059669; font-weight: bold; font-size: 14px;")
+
+            item_layout.addWidget(label_widget)
+            item_layout.addStretch()
+            item_layout.addWidget(value_widget)
+            impact_layout.addLayout(item_layout)
+
+        layout.addWidget(impact_card)
+
+        layout.addStretch()
+        scroll_area.setWidget(content_widget)
+        return scroll_area
+
+    def create_recommendations_tab(self):
+        scroll_area = QScrollArea()
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
+
+        summary = self.results_data.get('summary', {})
+        recommendations = summary.get("주요_추천사항", [])
+
+        if not recommendations:
+            no_data_label = QLabel("추천사항이 없습니다.")
+            no_data_label.setStyleSheet("color: #666; font-style: italic; text-align: center; margin: 50px;")
+            layout.addWidget(no_data_label)
+        else:
+            for i, rec in enumerate(recommendations, 1):
+                rec_card = QGroupBox(f"추천 {i}: {rec.get('상품명', 'Unknown')}")
+                rec_layout = QVBoxLayout(rec_card)
+
+                # 추천 유형 및 우선순위
+                type_layout = QHBoxLayout()
+                type_label = QLabel(f"유형: {rec.get('추천유형', 'Unknown')}")
+                type_label.setStyleSheet("font-weight: bold; color: #8b5cf6;")
+                priority_label = QLabel(f"우선순위: {rec.get('우선순위', 'Unknown')}")
+                priority_label.setStyleSheet("font-weight: bold; color: #dc2626;")
+
+                type_layout.addWidget(type_label)
+                type_layout.addStretch()
+                type_layout.addWidget(priority_label)
+                rec_layout.addLayout(type_layout)
+
+                # 액션
+                action_label = QLabel("권장 액션:")
+                action_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+                action_text = QLabel(rec.get('액션', 'No action specified'))
+                action_text.setStyleSheet("color: #333; margin: 5px 0px; padding: 10px; background-color: #f8f9fa; border-radius: 4px;")
+                action_text.setWordWrap(True)
+
+                rec_layout.addWidget(action_label)
+                rec_layout.addWidget(action_text)
+
+                layout.addWidget(rec_card)
+
+        layout.addStretch()
+        scroll_area.setWidget(content_widget)
+        return scroll_area
+
+    def create_cluster_tab(self):
+        scroll_area = QScrollArea()
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
+
+        analysis_results = self.results_data.get('analysis_results', {})
+        cluster_analysis = analysis_results.get('cluster_analysis', {})
+
+        if not cluster_analysis:
+            no_data_label = QLabel("클러스터 분석 데이터가 없습니다.")
+            no_data_label.setStyleSheet("color: #666; font-style: italic; text-align: center; margin: 50px;")
+            layout.addWidget(no_data_label)
+        else:
+            for cluster_id, cluster_info in cluster_analysis.items():
+                cluster_card = QGroupBox(f"클러스터 {cluster_id}: {cluster_info.get('label', 'Unknown')}")
+                cluster_layout = QVBoxLayout(cluster_card)
+
+                # 통계 정보
+                stats = cluster_info.get('stats', {})
+                stats_layout = QGridLayout()
+
+                stats_data = [
+                    ("상품 수", f"{stats.get('product_count', 0)}개"),
+                    ("총 매출", f"{stats.get('total_sales', 0):,.0f}원"),
+                    ("평균 이익률", f"{stats.get('avg_profit_margin', 0):.1f}%"),
+                    ("평균 광고비율", f"{stats.get('avg_ad_ratio', 0):.1f}%")
+                ]
+
+                for i, (label, value) in enumerate(stats_data):
+                    label_widget = QLabel(f"{label}:")
+                    label_widget.setStyleSheet("font-weight: bold;")
+                    value_widget = QLabel(value)
+                    value_widget.setStyleSheet("color: #2563eb;")
+
+                    stats_layout.addWidget(label_widget, i // 2, (i % 2) * 2)
+                    stats_layout.addWidget(value_widget, i // 2, (i % 2) * 2 + 1)
+
+                cluster_layout.addLayout(stats_layout)
+
+                # 추천 액션
+                action_label = QLabel("추천 액션:")
+                action_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+                action_text = QLabel(cluster_info.get('recommended_action', 'No action specified'))
+                action_text.setStyleSheet("color: #333; margin: 5px 0px; padding: 10px; background-color: #f0f9ff; border-radius: 4px;")
+                action_text.setWordWrap(True)
+
+                cluster_layout.addWidget(action_label)
+                cluster_layout.addWidget(action_text)
+
+                # 우선순위
+                priority_label = QLabel(f"우선순위: {cluster_info.get('priority', 'Unknown')}")
+                priority_label.setStyleSheet("font-weight: bold; color: #dc2626; margin-top: 5px;")
+                cluster_layout.addWidget(priority_label)
+
+                layout.addWidget(cluster_card)
+
+        layout.addStretch()
+        scroll_area.setWidget(content_widget)
+        return scroll_area
+
+    def create_trend_analysis_tab(self):
+        """트렌드 분석 탭 생성"""
+        scroll_area = QScrollArea()
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
+
+        analysis_results = self.results_data.get('analysis_results', {})
+        trend_analysis = analysis_results.get('enhanced_analytics', {}).get('trend_analysis', {})
+
+        if trend_analysis.get('error'):
+            error_label = QLabel(f"❌ {trend_analysis['error']}")
+            error_label.setStyleSheet("color: #dc2626; font-style: italic; text-align: center; margin: 50px;")
+            layout.addWidget(error_label)
+        elif not trend_analysis:
+            no_data_label = QLabel("📈 트렌드 분석 데이터가 없습니다.")
+            no_data_label.setStyleSheet("color: #666; font-style: italic; text-align: center; margin: 50px;")
+            layout.addWidget(no_data_label)
+        else:
+            # 트렌드 요약
+            summary = trend_analysis.get('summary', {})
+            summary_card = QGroupBox("📊 트렌드 요약")
+            summary_layout = QVBoxLayout(summary_card)
+
+            trend_info = [
+                ("📈 전반적 트렌드", summary.get('trend_direction', '알수없음')),
+                ("💚 비즈니스 건강도", summary.get('business_health', '보통')),
+                ("📅 분석 데이터 점수", f"{trend_analysis.get('data_points', 0)}개")
+            ]
+
+            for label, value in trend_info:
+                info_layout = QHBoxLayout()
+                label_widget = QLabel(label)
+                label_widget.setStyleSheet("font-weight: bold;")
+                value_widget = QLabel(str(value))
+                value_widget.setStyleSheet("color: #2563eb; font-weight: bold;")
+
+                info_layout.addWidget(label_widget)
+                info_layout.addStretch()
+                info_layout.addWidget(value_widget)
+                summary_layout.addLayout(info_layout)
+
+            layout.addWidget(summary_card)
+
+            # 매출 트렌드
+            sales_trend = trend_analysis.get('sales_trend', {})
+            if sales_trend:
+                sales_card = QGroupBox("💰 매출 트렌드")
+                sales_layout = QGridLayout(sales_card)
+
+                sales_data = [
+                    ("방향", sales_trend.get('direction', '알수없음')),
+                    ("기울기", str(sales_trend.get('slope', 0))),
+                    ("신뢰도 (R²)", str(sales_trend.get('r_squared', 0))),
+                    ("강도", sales_trend.get('strength', '보통'))
+                ]
+
+                for i, (label, value) in enumerate(sales_data):
+                    label_widget = QLabel(f"{label}:")
+                    label_widget.setStyleSheet("font-weight: bold;")
+                    value_widget = QLabel(value)
+                    value_widget.setStyleSheet("color: #059669;")
+
+                    sales_layout.addWidget(label_widget, i // 2, (i % 2) * 2)
+                    sales_layout.addWidget(value_widget, i // 2, (i % 2) * 2 + 1)
+
+                layout.addWidget(sales_card)
+
+            # 변동성 분석
+            volatility = trend_analysis.get('volatility_analysis', {})
+            if volatility:
+                volatility_card = QGroupBox("📊 변동성 분석")
+                volatility_layout = QGridLayout(volatility_card)
+
+                volatility_data = [
+                    ("매출 변동성", f"{volatility.get('sales_volatility', 0)}%"),
+                    ("수익 변동성", f"{volatility.get('profit_volatility', 0)}%"),
+                    ("안정성 점수", f"{volatility.get('stability_score', 0)}/100")
+                ]
+
+                for i, (label, value) in enumerate(volatility_data):
+                    label_widget = QLabel(f"{label}:")
+                    label_widget.setStyleSheet("font-weight: bold;")
+                    value_widget = QLabel(value)
+                    value_widget.setStyleSheet("color: #7c3aed;")
+
+                    volatility_layout.addWidget(label_widget, i, 0)
+                    volatility_layout.addWidget(value_widget, i, 1)
+
+                layout.addWidget(volatility_card)
+
+            # 추천사항
+            recommendations = summary.get('recommendations', [])
+            if recommendations:
+                rec_card = QGroupBox("💡 트렌드 기반 추천사항")
+                rec_layout = QVBoxLayout(rec_card)
+
+                for i, rec in enumerate(recommendations, 1):
+                    rec_label = QLabel(f"{i}. {rec}")
+                    rec_label.setWordWrap(True)
+                    rec_label.setStyleSheet("color: #333; margin: 5px 0px; padding: 8px; background-color: #f0f9ff; border-radius: 4px;")
+                    rec_layout.addWidget(rec_label)
+
+                layout.addWidget(rec_card)
+
+        layout.addStretch()
+        scroll_area.setWidget(content_widget)
+        return scroll_area
+
+    def create_advanced_clustering_tab(self):
+        """고급 클러스터링 탭 생성"""
+        scroll_area = QScrollArea()
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
+
+        analysis_results = self.results_data.get('analysis_results', {})
+        advanced_clustering = analysis_results.get('enhanced_analytics', {}).get('advanced_clustering', {})
+
+        if advanced_clustering.get('error'):
+            error_label = QLabel(f"❌ {advanced_clustering['error']}")
+            error_label.setStyleSheet("color: #dc2626; font-style: italic; text-align: center; margin: 50px;")
+            layout.addWidget(error_label)
+        elif not advanced_clustering:
+            no_data_label = QLabel("🔬 고급 클러스터링 데이터가 없습니다.")
+            no_data_label.setStyleSheet("color: #666; font-style: italic; text-align: center; margin: 50px;")
+            layout.addWidget(no_data_label)
+        else:
+            # 알고리즘 비교 결과
+            algorithm_comparison = advanced_clustering.get('algorithm_comparison', {})
+            best_algorithm = advanced_clustering.get('best_algorithm', 'kmeans')
+
+            if algorithm_comparison:
+                comparison_card = QGroupBox("🔬 알고리즘 성능 비교")
+                comparison_layout = QVBoxLayout(comparison_card)
+
+                for algo_name, results in algorithm_comparison.items():
+                    algo_layout = QHBoxLayout()
+
+                    # 알고리즘 이름 및 선택 표시
+                    algo_label = QLabel(f"{'⭐ ' if algo_name == best_algorithm else '  '}{algo_name.upper()}")
+                    algo_label.setStyleSheet("font-weight: bold; color: #059669;" if algo_name == best_algorithm else "font-weight: bold;")
+
+                    silhouette = results.get('silhouette_score', 0)
+                    clusters = results.get('n_clusters', 0)
+
+                    score_label = QLabel(f"실루엣: {silhouette:.3f}")
+                    score_label.setStyleSheet("color: #2563eb;")
+
+                    clusters_label = QLabel(f"클러스터: {clusters}개")
+                    clusters_label.setStyleSheet("color: #7c3aed;")
+
+                    if algo_name == 'dbscan' and 'n_noise' in results:
+                        noise_label = QLabel(f"노이즈: {results['n_noise']}개")
+                        noise_label.setStyleSheet("color: #dc2626;")
+                        algo_layout.addWidget(noise_label)
+
+                    algo_layout.addWidget(algo_label)
+                    algo_layout.addStretch()
+                    algo_layout.addWidget(score_label)
+                    algo_layout.addWidget(clusters_label)
+
+                    comparison_layout.addLayout(algo_layout)
+
+                layout.addWidget(comparison_card)
+
+            # 최적 알고리즘 클러스터 분석
+            cluster_analysis = advanced_clustering.get('cluster_analysis', {})
+            if cluster_analysis:
+                clusters_card = QGroupBox(f"🎯 {best_algorithm.upper()} 클러스터 분석")
+                clusters_layout = QVBoxLayout(clusters_card)
+
+                for cluster_id, cluster_info in cluster_analysis.items():
+                    cluster_widget = QGroupBox(f"클러스터 {cluster_id}: {cluster_info.get('label', 'Unknown')}")
+                    cluster_layout = QVBoxLayout(cluster_widget)
+
+                    # 통계 정보
+                    stats = cluster_info.get('stats', {})
+                    if stats:
+                        stats_layout = QGridLayout()
+                        stats_data = [
+                            ("상품 수", f"{stats.get('product_count', 0)}개"),
+                            ("평균 매출", f"{stats.get('avg_sales', 0):,.0f}원"),
+                            ("평균 이익률", f"{stats.get('avg_profit_margin', 0):.1f}%"),
+                            ("평균 광고비율", f"{stats.get('avg_ad_ratio', 0):.1f}%")
+                        ]
+
+                        for i, (label, value) in enumerate(stats_data):
+                            label_widget = QLabel(f"{label}:")
+                            label_widget.setStyleSheet("font-weight: bold;")
+                            value_widget = QLabel(value)
+                            value_widget.setStyleSheet("color: #2563eb;")
+
+                            stats_layout.addWidget(label_widget, i // 2, (i % 2) * 2)
+                            stats_layout.addWidget(value_widget, i // 2, (i % 2) * 2 + 1)
+
+                        cluster_layout.addLayout(stats_layout)
+
+                    # 추천 액션
+                    action = cluster_info.get('recommended_action', 'No action specified')
+                    action_label = QLabel(action)
+                    action_label.setWordWrap(True)
+                    action_label.setStyleSheet("color: #333; margin: 10px 0px; padding: 10px; background-color: #f0f9ff; border-radius: 4px;")
+                    cluster_layout.addWidget(action_label)
+
+                    clusters_layout.addWidget(cluster_widget)
+
+                layout.addWidget(clusters_card)
+
+            # 추천사항
+            recommendations = advanced_clustering.get('recommendations', [])
+            if recommendations:
+                rec_card = QGroupBox("💡 고급 클러스터링 추천사항")
+                rec_layout = QVBoxLayout(rec_card)
+
+                for i, rec in enumerate(recommendations, 1):
+                    rec_label = QLabel(f"{i}. {rec}")
+                    rec_label.setWordWrap(True)
+                    rec_label.setStyleSheet("color: #333; margin: 5px 0px; padding: 8px; background-color: #fef3c7; border-radius: 4px;")
+                    rec_layout.addWidget(rec_label)
+
+                layout.addWidget(rec_card)
+
+        layout.addStretch()
+        scroll_area.setWidget(content_widget)
+        return scroll_area
+
+    def create_pattern_analysis_tab(self):
+        """패턴 분석 탭 생성"""
+        scroll_area = QScrollArea()
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
+
+        analysis_results = self.results_data.get('analysis_results', {})
+        pattern_analysis = analysis_results.get('enhanced_analytics', {}).get('pattern_analysis', {})
+
+        if pattern_analysis.get('error'):
+            error_label = QLabel(f"❌ {pattern_analysis['error']}")
+            error_label.setStyleSheet("color: #dc2626; font-style: italic; text-align: center; margin: 50px;")
+            layout.addWidget(error_label)
+        elif not pattern_analysis:
+            no_data_label = QLabel("🎯 패턴 분석 데이터가 없습니다.")
+            no_data_label.setStyleSheet("color: #666; font-style: italic; text-align: center; margin: 50px;")
+            layout.addWidget(no_data_label)
+        else:
+            # ABC 분석
+            abc_analysis = pattern_analysis.get('abc_analysis', {})
+            if abc_analysis and abc_analysis.get('category_stats'):
+                abc_card = QGroupBox("🏆 ABC 분석 (파레토 원칙)")
+                abc_layout = QVBoxLayout(abc_card)
+
+                for stat in abc_analysis['category_stats']:
+                    category = stat['abc_category']
+                    count = stat['product_count']
+                    sales = stat['total_sales']
+                    profit = stat['total_profit']
+
+                    category_layout = QHBoxLayout()
+
+                    category_label = QLabel(f"등급 {category}")
+                    category_label.setStyleSheet("font-weight: bold; color: #059669;")
+
+                    details_label = QLabel(f"상품 {count}개 | 매출 {sales:,.0f}원 | 이익 {profit:,.0f}원")
+                    details_label.setStyleSheet("color: #2563eb;")
+
+                    category_layout.addWidget(category_label)
+                    category_layout.addStretch()
+                    category_layout.addWidget(details_label)
+
+                    abc_layout.addLayout(category_layout)
+
+                layout.addWidget(abc_card)
+
+            # 파레토 분석
+            pareto_analysis = pattern_analysis.get('pareto_analysis', {})
+            if pareto_analysis:
+                pareto_card = QGroupBox("📊 파레토 분석 (80-20 법칙)")
+                pareto_layout = QVBoxLayout(pareto_card)
+
+                contribution = pareto_analysis.get('top_20_percent_contribution', 0)
+                efficiency = pareto_analysis.get('pareto_efficiency', '보통')
+
+                pareto_info = QLabel(f"상위 20% 상품이 전체 매출의 {contribution}% 기여 (효율성: {efficiency})")
+                pareto_info.setStyleSheet("font-weight: bold; color: #7c3aed; padding: 10px; background-color: #faf5ff; border-radius: 4px;")
+                pareto_layout.addWidget(pareto_info)
+
+                layout.addWidget(pareto_card)
+
+            # 수익성 세그멘테이션
+            profitability = pattern_analysis.get('profitability_segments', {})
+            if profitability and profitability.get('segment_stats'):
+                profit_card = QGroupBox("💰 수익성 세그멘테이션")
+                profit_layout = QVBoxLayout(profit_card)
+
+                for stat in profitability['segment_stats']:
+                    segment = stat['profitability_segment']
+                    count = stat['product_count']
+                    total_profit = stat['total_profit']
+
+                    segment_layout = QHBoxLayout()
+
+                    segment_label = QLabel(f"{segment} 상품")
+                    segment_label.setStyleSheet("font-weight: bold;")
+
+                    details_label = QLabel(f"{count}개 (총 이익: {total_profit:,.0f}원)")
+                    details_label.setStyleSheet("color: #059669;")
+
+                    segment_layout.addWidget(segment_label)
+                    segment_layout.addStretch()
+                    segment_layout.addWidget(details_label)
+
+                    profit_layout.addLayout(segment_layout)
+
+                layout.addWidget(profit_card)
+
+            # 리워드 효율성
+            reward_efficiency = pattern_analysis.get('reward_efficiency', {})
+            if reward_efficiency and not reward_efficiency.get('no_reward_data'):
+                reward_card = QGroupBox("🎁 리워드 효율성 분석")
+                reward_layout = QVBoxLayout(reward_card)
+
+                avg_roi = reward_efficiency.get('average_reward_roi', 0)
+                grade = reward_efficiency.get('efficiency_grade', '보통')
+                total_products = reward_efficiency.get('total_reward_products', 0)
+
+                reward_info = QLabel(f"평균 ROI: {avg_roi:.2f} | 효율성: {grade} | 리워드 적용 상품: {total_products}개")
+                reward_info.setStyleSheet("font-weight: bold; color: #dc2626; padding: 10px; background-color: #fef2f2; border-radius: 4px;")
+                reward_layout.addWidget(reward_info)
+
+                layout.addWidget(reward_card)
+
+            # 전략적 인사이트
+            strategic_insights = pattern_analysis.get('strategic_insights', [])
+            if strategic_insights:
+                insights_card = QGroupBox("🧠 전략적 인사이트")
+                insights_layout = QVBoxLayout(insights_card)
+
+                for i, insight in enumerate(strategic_insights, 1):
+                    insight_label = QLabel(f"{i}. {insight}")
+                    insight_label.setWordWrap(True)
+                    insight_label.setStyleSheet("color: #333; margin: 5px 0px; padding: 8px; background-color: #ecfdf5; border-radius: 4px;")
+                    insights_layout.addWidget(insight_label)
+
+                layout.addWidget(insights_card)
+
+            # 우선순위 액션
+            action_priorities = pattern_analysis.get('action_priorities', [])
+            if action_priorities:
+                actions_card = QGroupBox("⚡ 우선순위 액션 플랜")
+                actions_layout = QVBoxLayout(actions_card)
+
+                for action in action_priorities:
+                    priority = action.get('priority', '보통')
+                    action_text = action.get('action', 'No action')
+                    category = action.get('category', '일반')
+
+                    action_layout = QHBoxLayout()
+
+                    priority_label = QLabel(f"[{priority}]")
+                    priority_color = "#dc2626" if priority == "긴급" else "#059669" if priority == "최우선" else "#2563eb"
+                    priority_label.setStyleSheet(f"font-weight: bold; color: {priority_color};")
+
+                    action_label = QLabel(f"{action_text} ({category})")
+                    action_label.setWordWrap(True)
+                    action_label.setStyleSheet("color: #333;")
+
+                    action_layout.addWidget(priority_label)
+                    action_layout.addWidget(action_label)
+
+                    actions_layout.addLayout(action_layout)
+
+                layout.addWidget(actions_card)
+
+        layout.addStretch()
+        scroll_area.setWidget(content_widget)
+        return scroll_area
+
 class ModernSalesAutomationApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.download_folder_path = ""
-        self.password = "1234"
+
+        # Pydantic Settings 초기화
+        self.settings = get_settings()
+
+        # 기존 변수들을 settings에서 가져오기 (안전한 방식)
+        self.download_folder_path = str(self.settings.paths.download_dir) if self.settings.paths.download_dir else ""
+        self.password = self.settings.file_processing.order_file_password
+
+        # config.py와의 호환성을 위해 전역 변수도 업데이트
+        if self.download_folder_path:
+            config.DOWNLOAD_DIR = Path(self.download_folder_path)
+
         self.worker = None
         self.manual_worker = None
         self.weekly_worker = None
-        
+        self.ai_worker = None
+
         # 오류 추적 시스템
         self.error_messages = []  # 오류 메시지 리스트
         self.error_count = 0      # 오류 카운터
-        
+
         self.init_ui()
         self.setup_logging()
         self.load_settings()
+
+        # 구조화된 로깅 초기화
+        setup_app_logging()
+        self.app_logger = get_logger("MainApp")
+
+        # 자동 업데이트 시스템 초기화
+        self.updater = SalesAutomationUpdater(current_version="2.0.0")
+
+        # 시작 시 업데이트 확인 (백그라운드)
+        if self.settings.check_updates:
+            QTimer.singleShot(3000, self.check_for_updates)  # 3초 후 확인
 
     def init_ui(self):
         self.setWindowTitle("📊 판매 데이터 자동화")
@@ -1472,7 +2421,6 @@ class ModernSalesAutomationApp(QMainWindow):
         self.statusBar().showMessage("✅ 준비됨")
 
         # 초기화 완료 후 성능 버튼 상태 업데이트
-        QTimer.singleShot(100, self.update_performance_buttons)
 
     def create_header(self):
         header_layout = QHBoxLayout()
@@ -1535,18 +2483,45 @@ class ModernSalesAutomationApp(QMainWindow):
         self.reward_btn = AppleStyleButton("💰 리워드 관리", "fa5s.gift", "#8b5cf6"); self.reward_btn.clicked.connect(self.show_reward_dialog)
         self.purchase_btn = AppleStyleButton("🛒 가구매 관리", "fa5s.shopping-cart", "#f59e0b"); self.purchase_btn.clicked.connect(self.show_purchase_dialog)
         self.weekly_report_btn = AppleStyleButton("📅 주간 리포트", "fa5s.calendar-week", "#10b981"); self.weekly_report_btn.clicked.connect(self.show_weekly_report_dialog)
-        
+        self.ai_analysis_btn = AppleStyleButton("🤖 AI 분석", "fa5s.brain", "#6366f1"); self.ai_analysis_btn.clicked.connect(self.start_ai_analysis)
+        self.update_btn = AppleStyleButton("🔄 업데이트 확인", "fa5s.download", "#6b7280"); self.update_btn.clicked.connect(self.manual_check_updates)
+
+        # AI 버튼 활성화 여부 설정
+        if not AI_MODULES_AVAILABLE:
+            self.ai_analysis_btn.setEnabled(False)
+            self.ai_analysis_btn.setToolTip("AI 모듈이 설치되지 않았습니다")
+
+        # 2025 AI 기능 버튼들 추가
+        self.ai_predict_btn = AppleStyleButton("🔮 AI 예측", "fa5s.crystal-ball", "#8b5cf6"); self.ai_predict_btn.clicked.connect(self.show_ai_predictions)
+        self.dashboard_btn = AppleStyleButton("📊 대시보드", "fa5s.chart-area", "#059669"); self.dashboard_btn.clicked.connect(self.show_interactive_dashboard)
+        self.insights_btn = AppleStyleButton("💡 스마트 인사이트", "fa5s.lightbulb", "#f59e0b"); self.insights_btn.clicked.connect(self.show_smart_insights)
+        self.mobile_web_btn = AppleStyleButton("📱 모바일 웹", "fa5s.mobile-alt", "#10b981"); self.mobile_web_btn.clicked.connect(self.start_mobile_web)
+
+        # 2025 AI 버튼 활성화 여부 설정
+        if not NEW_AI_MODULES_AVAILABLE:
+            self.ai_predict_btn.setEnabled(False)
+            self.ai_predict_btn.setToolTip("2025 AI 모듈이 설치되지 않았습니다")
+            self.dashboard_btn.setEnabled(False)
+            self.dashboard_btn.setToolTip("2025 AI 모듈이 설치되지 않았습니다")
+            self.insights_btn.setEnabled(False)
+            self.insights_btn.setToolTip("2025 AI 모듈이 설치되지 않았습니다")
+            self.mobile_web_btn.setEnabled(False)
+            self.mobile_web_btn.setToolTip("2025 AI 모듈이 설치되지 않았습니다")
+
+        # 기본 버튼들 첫 번째 줄
         control_layout.addWidget(self.start_btn); control_layout.addWidget(self.stop_btn); control_layout.addWidget(self.manual_btn)
         control_layout.addWidget(self.reward_btn); control_layout.addWidget(self.purchase_btn); control_layout.addWidget(self.weekly_report_btn)
-
-        # 성능 벤치마크 버튼 추가
-        self.benchmark_btn = AppleStyleButton("⚡ 성능 벤치마크", "fa5s.tachometer-alt", "#9333ea")
-        self.benchmark_btn.clicked.connect(self.run_performance_benchmark)
-        self.benchmark_btn.setToolTip("Pandas vs Polars 성능 비교 테스트를 실행합니다.")
-        control_layout.addWidget(self.benchmark_btn)
-
+        control_layout.addWidget(self.ai_analysis_btn); control_layout.addWidget(self.update_btn)
         control_layout.addStretch()
         layout.addLayout(control_layout)
+
+        # 두 번째 줄에 2025 AI 기능들 배치
+        control_layout2 = QHBoxLayout()
+        control_layout2.addWidget(self.ai_predict_btn); control_layout2.addWidget(self.dashboard_btn)
+        control_layout2.addWidget(self.insights_btn); control_layout2.addWidget(self.mobile_web_btn)
+        control_layout2.addStretch()
+        layout.addLayout(control_layout2)
+
         return settings_card
 
     def create_stats_section(self):
@@ -1593,6 +2568,7 @@ class ModernSalesAutomationApp(QMainWindow):
         return log_card
 
     def setup_logging(self):
+        # 레거시 로깅 설정 (기본 호환성)
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.FileHandler('sales_automation.log', encoding='utf-8'), logging.StreamHandler()])
 
     def select_folder(self):
@@ -1600,15 +2576,23 @@ class ModernSalesAutomationApp(QMainWindow):
         if folder:
             self.download_folder_path = folder
             self.folder_label.setText(f"📁 {folder}")
+            # Pydantic Settings에 저장
+            from pathlib import Path
+            set_download_dir(Path(folder))
             self.update_log(f"[INFO] 다운로드 폴더 설정: {folder}")
 
     def update_password(self):
         self.password = self.password_input.text()
+        # Pydantic Settings에 저장
+        set_order_file_password(self.password)
 
     def toggle_polars_engine(self):
         """Polars 엔진 토글"""
         use_polars = self.polars_checkbox.isChecked()
         set_engine(use_polars)
+
+        # Pydantic Settings에 저장
+        set_polars_enabled(use_polars)
 
         current_engine = get_current_engine()
         engine_status = "활성화" if use_polars else "비활성화"
@@ -1620,75 +2604,22 @@ class ModernSalesAutomationApp(QMainWindow):
         else:
             self.update_log(f"[INFO] 📊 표준 모드 활성화 - Pandas 엔진을 사용합니다.")
 
-        # 성능 벤치마크 버튼 표시 여부 업데이트
-        self.update_performance_buttons()
 
-    def update_performance_buttons(self):
-        """성능 벤치마크 버튼 활성화 상태 업데이트"""
-        # 벤치마크 버튼은 항상 활성화 (Pandas vs Polars 비교를 위해)
-        if hasattr(self, 'benchmark_btn'):
-            self.benchmark_btn.setEnabled(True)
-            tooltip_text = "Pandas vs Polars 성능 비교 테스트를 실행합니다."
-            if self.polars_checkbox.isChecked():
-                tooltip_text += " (현재: Polars 모드)"
-            else:
-                tooltip_text += " (현재: Pandas 모드)"
-            self.benchmark_btn.setToolTip(tooltip_text)
 
-    def run_performance_benchmark(self):
-        """성능 벤치마크 실행"""
-        try:
-            # 성능 테스트 스크립트 실행
-            import subprocess
-            import os
-
-            test_script_path = os.path.join(config.BASE_DIR, 'test_polars_performance.py')
-
-            if not os.path.exists(test_script_path):
-                QMessageBox.warning(
-                    self,
-                    "파일 없음",
-                    f"성능 테스트 스크립트를 찾을 수 없습니다:\n{test_script_path}"
-                )
-                return
-
-            # 확인 다이얼로그
-            reply = QMessageBox.question(
-                self,
-                "성능 벤치마크 실행",
-                "Pandas vs Polars 성능 비교 테스트를 실행하시겠습니까?\n\n"
-                "• 테스트 데이터를 생성하여 두 엔진의 성능을 비교합니다\n"
-                "• 데이터 로딩, 필터링, 그룹화, 조인 등을 테스트합니다\n"
-                "• 결과는 별도 창에서 확인할 수 있습니다",
-                QMessageBox.Yes | QMessageBox.No
-            )
-
-            if reply == QMessageBox.Yes:
-                self.update_log("[INFO] ⚡ 성능 벤치마크 시작...")
-
-                # 별도 프로세스로 실행 (GUI가 블록되지 않도록)
-                if os.name == 'nt':  # Windows
-                    subprocess.Popen([
-                        'python', test_script_path
-                    ], cwd=config.BASE_DIR, creationflags=subprocess.CREATE_NEW_CONSOLE)
-                else:  # Unix/Linux/Mac
-                    subprocess.Popen([
-                        'python', test_script_path
-                    ], cwd=config.BASE_DIR)
-
-                self.update_log("[INFO] 📊 성능 벤치마크가 별도 창에서 실행됩니다.")
-
-        except Exception as e:
-            error_msg = f"성능 벤치마크 실행 중 오류: {str(e)}"
-            self.update_log(f"[ERROR] {error_msg}")
-            self.on_error(error_msg)
-            QMessageBox.critical(self, "오류", error_msg)
-
+    @log_performance
     def start_monitoring(self):
         if not self.download_folder_path:
             QMessageBox.warning(self, "설정 오류", "다운로드 폴더를 먼저 선택해주세요.")
             return
-        
+
+        # 구조화된 로깅
+        self.app_logger.info(
+            "자동화 모니터링 시작",
+            download_folder=self.download_folder_path,
+            password_set=bool(self.password),
+            polars_enabled=self.polars_checkbox.isChecked()
+        )
+
         stop_flag_path = os.path.join(config.BASE_DIR, 'stop.flag')
         if os.path.exists(stop_flag_path):
             try:
@@ -1748,6 +2679,54 @@ class ModernSalesAutomationApp(QMainWindow):
             else:
                 QMessageBox.warning(self, "날짜 오류", "올바른 날짜 범위를 선택해주세요.")
 
+    def start_ai_analysis(self):
+        """AI 분석 시작"""
+        if not self.download_folder_path:
+            QMessageBox.warning(self, "설정 오류", "다운로드 폴더를 먼저 선택해주세요.")
+            return
+
+        if not AI_MODULES_AVAILABLE:
+            QMessageBox.critical(self, "AI 모듈 오류", "AI 분석 모듈이 설치되지 않았습니다.\n\nscikit-learn, polars 패키지를 설치해주세요.")
+            return
+
+        # 확인 대화상자
+        reply = QMessageBox.question(
+            self,
+            "AI 분석 시작",
+            "리포트 보관함의 최신 데이터를 분석하여 AI 기반 비즈니스 인사이트를 생성합니다.\n\n분석을 시작하시겠습니까?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        # AI 분석 워커 초기화 및 시작
+        self.set_controls_enabled(False)
+        self.ai_worker = AIAnalysisWorker(self.download_folder_path)
+        self.ai_worker.output_signal.connect(self.update_log)
+        self.ai_worker.error_signal.connect(self.on_error)
+        self.ai_worker.finished_signal.connect(self.on_ai_analysis_finished)
+        self.ai_worker.results_signal.connect(self.on_ai_analysis_results)
+        self.ai_worker.start()
+
+        self.update_log("[INFO] 🤖 AI 분석을 시작합니다...")
+
+    def on_ai_analysis_finished(self):
+        """AI 분석 완료 후 처리"""
+        self.ai_worker = None
+        self.set_controls_enabled(True)
+        self.update_log("[INFO] ✅ AI 분석이 완료되었습니다.")
+
+    def on_ai_analysis_results(self, results_data):
+        """AI 분석 결과 받아서 다이얼로그 표시"""
+        try:
+            # 결과 다이얼로그 표시
+            dialog = AIAnalysisResultsDialog(results_data, self)
+            dialog.exec()
+        except Exception as e:
+            self.update_log(f"[ERROR] AI 분석 결과 표시 중 오류: {str(e)}")
+            QMessageBox.critical(self, "오류", f"AI 분석 결과를 표시하는 중 오류가 발생했습니다:\n{str(e)}")
+
     def run_weekly_report_creation(self, start_date, end_date):
         self.set_controls_enabled(False)
         self.weekly_worker = WeeklyWorker(start_date, end_date, self.download_folder_path)
@@ -1781,7 +2760,16 @@ class ModernSalesAutomationApp(QMainWindow):
 
     def on_error(self, msg):
         self.update_log(msg)
-        
+
+        # 구조화된 로깅으로 에러 기록
+        if hasattr(self, 'app_logger'):
+            self.app_logger.error(
+                "애플리케이션 에러",
+                error_message=msg,
+                error_type=self.classify_error(msg),
+                error_count=self.error_count + 1
+            )
+
         # 오류 메시지 추가 (시간과 함께 저장)
         error_entry = {
             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -1789,11 +2777,11 @@ class ModernSalesAutomationApp(QMainWindow):
             'type': self.classify_error(msg)
         }
         self.error_messages.append(error_entry)
-        
+
         # 오류 카운터 업데이트
         self.error_count += 1
         self.error_card.update_value(f"{self.error_count}개")
-        
+
         # 최근 100개 오류만 유지 (메모리 관리)
         if len(self.error_messages) > 100:
             self.error_messages = self.error_messages[-100:]
@@ -1824,8 +2812,22 @@ class ModernSalesAutomationApp(QMainWindow):
         dialog.exec()
 
     def update_log(self, message):
-        self.log_output.append(f"[{datetime.now().strftime("%H:%M:%S")}] {message}")
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        formatted_message = f"[{timestamp}] {message}"
+
+        # GUI 로그 출력
+        self.log_output.append(formatted_message)
         self.log_output.verticalScrollBar().setValue(self.log_output.verticalScrollBar().maximum())
+
+        # 구조화된 로깅에도 기록
+        if hasattr(self, 'app_logger'):
+            # 로그 레벨 자동 감지
+            if "[ERROR]" in message:
+                self.app_logger.error(message)
+            elif "[WARNING]" in message or "[WARN]" in message:
+                self.app_logger.warning(message)
+            else:
+                self.app_logger.info(message)
 
     def set_controls_enabled(self, enabled):
         self.start_btn.setEnabled(enabled)
@@ -1838,23 +2840,24 @@ class ModernSalesAutomationApp(QMainWindow):
     def load_settings(self):
         """애플리케이션 설정 로드"""
         try:
-            settings = QSettings("SalesAutomation", "ModernSalesApp")
-            
-            # 창 위치 및 크기 복원
-            geometry = settings.value("geometry")
+            # 레거시 QSettings에서 창 위치만 복원
+            qt_settings = QSettings("SalesAutomation", "ModernSalesApp")
+            geometry = qt_settings.value("geometry")
             if geometry:
                 self.restoreGeometry(geometry)
-            
-            # 다운로드 폴더 경로 복원
-            folder_path = settings.value("download_folder", "")
-            if folder_path and os.path.exists(folder_path):
-                self.download_folder_path = folder_path
-                self.folder_label.setText(f"📁 {folder_path}")
-            
+
+            # Pydantic Settings에서 앱 설정 로드
+            if self.settings.paths.download_dir and self.settings.paths.download_dir.exists():
+                self.download_folder_path = str(self.settings.paths.download_dir)
+                self.folder_label.setText(f"📁 {self.download_folder_path}")
+
             # Polars 엔진 설정 복원
-            use_polars = settings.value("use_polars", True, type=bool)  # 기본값: True (Polars 사용)
+            use_polars = self.settings.database.use_polars
             self.polars_checkbox.setChecked(use_polars)
             set_engine(use_polars)
+
+            # 패스워드 설정 복원
+            self.password_input.setText(self.settings.file_processing.order_file_password)
 
             # 현재 엔진 상태를 로그에 표시
             current_engine = get_current_engine()
@@ -1868,24 +2871,154 @@ class ModernSalesAutomationApp(QMainWindow):
             set_engine(True)
     
     def save_settings(self):
-        """애플리케이션 설정 저장"""
+        """애플리케이션 설정 저장 - Pydantic Settings 자동 저장"""
         try:
-            settings = QSettings("SalesAutomation", "ModernSalesApp")
-            
-            # 창 위치 및 크기 저장
-            settings.setValue("geometry", self.saveGeometry())
-            
-            # 다운로드 폴더 경로 저장
-            if self.download_folder_path:
-                settings.setValue("download_folder", self.download_folder_path)
+            # 레거시 QSettings에는 창 위치만 저장
+            qt_settings = QSettings("SalesAutomation", "ModernSalesApp")
+            qt_settings.setValue("geometry", self.saveGeometry())
 
-            # Polars 엔진 설정 저장
-            settings.setValue("use_polars", self.polars_checkbox.isChecked())
+            # Pydantic Settings는 각 설정 변경 시 자동으로 저장됨
+            # (별도 저장 작업 불필요)
 
         except Exception as e:
             import logging
             logging.error(f"설정 저장 중 오류: {e}")
-    
+
+    def check_for_updates(self):
+        """백그라운드 업데이트 확인"""
+        try:
+            self.app_logger.info("자동 업데이트 확인 시작")
+            version_info = self.updater.check_for_updates()
+
+            if version_info:
+                self.app_logger.info(
+                    "새 버전 발견",
+                    current_version=self.updater.current_version,
+                    new_version=version_info.version
+                )
+
+                # 새 버전 발견 시 사용자에게 알림
+                self.update_log(f"[INFO] 🔄 새 버전 {version_info.version}이 발견되었습니다!")
+                self.update_log(f"[INFO] 업데이트 확인 버튼을 클릭하여 수동으로 업데이트하실 수 있습니다.")
+
+            else:
+                self.app_logger.info("현재 최신 버전입니다")
+
+        except Exception as e:
+            self.app_logger.error("자동 업데이트 확인 실패", error=str(e))
+
+    def manual_check_updates(self):
+        """수동 업데이트 확인"""
+        try:
+            self.update_log("[INFO] 🔄 업데이트를 확인하고 있습니다...")
+            self.update_btn.setEnabled(False)
+
+            version_info = self.updater.check_for_updates()
+
+            if version_info:
+                # 업데이트 다이얼로그 표시
+                from PySide6.QtWidgets import QMessageBox
+
+                msg = QMessageBox(self)
+                msg.setWindowTitle("업데이트 발견")
+                msg.setIcon(QMessageBox.Information)
+                msg.setText(f"새 버전 {version_info.version}이 발견되었습니다!")
+                msg.setInformativeText(
+                    f"현재 버전: {self.updater.current_version}\n"
+                    f"새 버전: {version_info.version}\n"
+                    f"출시일: {version_info.build_date}\n\n"
+                    "지금 다운로드하시겠습니까?"
+                )
+
+                download_btn = msg.addButton("다운로드", QMessageBox.YesRole)
+                later_btn = msg.addButton("나중에", QMessageBox.NoRole)
+                msg.setDefaultButton(download_btn)
+
+                msg.exec()
+
+                if msg.clickedButton() == download_btn:
+                    self.download_update(version_info)
+
+            else:
+                QMessageBox.information(
+                    self,
+                    "업데이트 확인",
+                    f"현재 버전 {self.updater.current_version}이 최신입니다."
+                )
+
+        except Exception as e:
+            self.update_log(f"[ERROR] 업데이트 확인 실패: {e}")
+            QMessageBox.critical(self, "오류", f"업데이트 확인 중 오류가 발생했습니다:\n{e}")
+        finally:
+            self.update_btn.setEnabled(True)
+
+    def download_update(self, version_info):
+        """업데이트 다운로드"""
+        from PySide6.QtWidgets import QProgressDialog
+        from PySide6.QtCore import QThread, Signal
+
+        class DownloadWorker(QThread):
+            progress_signal = Signal(str)
+            finished_signal = Signal(bool, str)
+
+            def __init__(self, updater, version_info):
+                super().__init__()
+                self.updater = updater
+                self.version_info = version_info
+
+            def run(self):
+                try:
+                    self.progress_signal.emit("다운로드를 시작합니다...")
+                    download_path = self.updater.download_update(self.version_info)
+
+                    if download_path:
+                        self.progress_signal.emit("설치 준비 중...")
+                        success = self.updater.install_update(download_path)
+                        if success:
+                            self.finished_signal.emit(True, str(download_path))
+                        else:
+                            self.finished_signal.emit(False, "설치 준비 실패")
+                    else:
+                        self.finished_signal.emit(False, "다운로드 실패")
+
+                except Exception as e:
+                    self.finished_signal.emit(False, str(e))
+
+        # 다운로드 프로그레스 다이얼로그
+        progress = QProgressDialog("업데이트 다운로드 중...", "취소", 0, 0, self)
+        progress.setWindowTitle("업데이트")
+        progress.setMinimumDuration(0)
+        progress.show()
+
+        # 다운로드 워커 시작
+        download_worker = DownloadWorker(self.updater, version_info)
+        download_worker.progress_signal.connect(lambda msg: progress.setLabelText(msg))
+        download_worker.finished_signal.connect(
+            lambda success, message: self.on_download_finished(success, message, progress)
+        )
+        download_worker.start()
+
+    def on_download_finished(self, success, message, progress_dialog):
+        """다운로드 완료 처리"""
+        progress_dialog.close()
+
+        if success:
+            QMessageBox.information(
+                self,
+                "업데이트 준비 완료",
+                "업데이트가 준비되었습니다.\n"
+                "프로그램을 종료하면 자동으로 업데이트됩니다.\n\n"
+                "지금 프로그램을 종료하시겠습니까?"
+            )
+            # 사용자가 원하면 프로그램 종료
+            self.close()
+        else:
+            QMessageBox.critical(
+                self,
+                "업데이트 실패",
+                f"업데이트에 실패했습니다:\n{message}"
+            )
+
     def cleanup_workers(self):
         """모든 워커 스레드 안전 정리"""
         workers = [
@@ -1947,6 +3080,349 @@ class ModernSalesAutomationApp(QMainWindow):
             logging.error(f"애플리케이션 종료 중 오류: {e}")
             # 오류가 있어도 종료 진행
             super().closeEvent(event)
+
+    # 2025 AI 기능 메서드들
+    def show_ai_predictions(self):
+        """AI 예측 기능 실행"""
+        if not NEW_AI_MODULES_AVAILABLE:
+            QMessageBox.warning(self, "기능 제한", "2025 AI 모듈이 설치되지 않았습니다.")
+            return
+
+        try:
+            self.log_output.append("[INFO] 🔮 AI 예측 분석 시작...")
+
+            # 최신 리포트 데이터 로드
+            import glob
+            import pandas as pd
+
+            archive_dir = config.get_report_archive_dir()
+            # 일간통합리포트 폴더에서만 검색 (중복 방지)
+            daily_report_dir = os.path.join(archive_dir, "일간통합리포트")
+
+            # 디버깅: 실제 검색 경로 로그 출력
+            self.log_output.append(f"[DEBUG] 리포트 검색 경로: {daily_report_dir}")
+            self.log_output.append(f"[DEBUG] 폴더 존재 여부: {os.path.exists(daily_report_dir)}")
+
+            report_files = glob.glob(os.path.join(daily_report_dir, "전체_통합_리포트_*.xlsx"))
+            self.log_output.append(f"[DEBUG] 찾은 리포트 파일 수: {len(report_files)}")
+
+            if not report_files:
+                QMessageBox.information(self, "데이터 없음", f"분석할 리포트 파일이 없습니다.\n검색 경로: {daily_report_dir}")
+                return
+
+            # 최신 파일 몇 개 선택
+            report_files.sort(key=os.path.getmtime, reverse=True)
+            latest_files = report_files[:5]  # 최신 5개 파일
+
+            # 데이터 통합
+            all_data = []
+            for file in latest_files:
+                try:
+                    # 시트명 자동 감지
+                    xl_file = pd.ExcelFile(file)
+                    sheet_names = xl_file.sheet_names
+                    self.log_output.append(f"[DEBUG] {file} 시트명: {sheet_names}")
+
+                    # 가능한 시트명들 시도 (실제 시트명 '전체 통합 데이터' 우선)
+                    possible_sheets = ['전체 통합 데이터', '정리된 데이터', 'Sheet1', '전체 통합 리포트', '통합 리포트']
+                    df = None
+
+                    for sheet_name in possible_sheets:
+                        if sheet_name in sheet_names:
+                            df = pd.read_excel(file, sheet_name=sheet_name)
+                            self.log_output.append(f"[DEBUG] {sheet_name} 시트에서 {len(df)}개 행 로드")
+                            break
+
+                    if df is not None and len(df) > 0:
+                        all_data.append(df)
+                    else:
+                        self.log_output.append(f"[WARNING] {file}에서 유효한 데이터 시트를 찾을 수 없음")
+
+                except Exception as e:
+                    self.log_output.append(f"[ERROR] {file} 로드 실패: {str(e)}")
+                    continue
+
+            if not all_data:
+                QMessageBox.warning(self, "데이터 오류", "유효한 데이터를 로드할 수 없습니다.")
+                return
+
+            combined_df = pd.concat(all_data, ignore_index=True)
+
+            # AI 예측 실행
+            predictor = SalesPredictor()
+
+            # 데이터 변환 (pandas DataFrame을 예측기에 적합한 형태로)
+            sales_data = []
+            for _, row in combined_df.iterrows():
+                sales_data.append({
+                    'date': row.get('날짜', pd.Timestamp.now().strftime('%Y-%m-%d')),
+                    'product_id': str(row.get('상품ID', '')),
+                    'sales': float(row.get('매출', 0)),
+                    'quantity': int(row.get('수량', 0)),
+                    'margin': float(row.get('판매마진', 0))
+                })
+
+            # 예측 생성
+            predictions = predictor.predict_sales_trend(sales_data)
+            insights = predictor.generate_business_insights(sales_data, predictions)
+
+            # 결과 표시
+            result_text = f"""
+🔮 AI 예측 분석 결과
+
+📊 분석 대상: {len(combined_df)}개 상품, {len(latest_files)}개 파일
+
+🎯 주요 예측:
+• 다음 주 예상 매출: {predictions.get('next_week_sales', 0):,.0f}원
+• 성장률 전망: {predictions.get('growth_rate', 0):.1f}%
+• 리스크 레벨: {predictions.get('risk_level', 'Medium')}
+
+💡 비즈니스 인사이트:
+{insights.get('summary', '분석 중 오류가 발생했습니다.')}
+
+📈 추천 액션:
+{insights.get('recommendations', '추천 사항을 생성할 수 없습니다.')}
+            """
+
+            # 결과 다이얼로그 표시
+            msg = QMessageBox(self)
+            msg.setWindowTitle("🔮 AI 예측 결과")
+            msg.setText(result_text)
+            msg.setStyleSheet("QMessageBox { font-size: 12px; } QMessageBox QLabel { min-width: 500px; }")
+            msg.exec()
+
+            self.log_output.append("[INFO] ✅ AI 예측 분석 완료")
+
+        except Exception as e:
+            self.log_output.append(f"[ERROR] AI 예측 중 오류: {str(e)}")
+            QMessageBox.critical(self, "오류", f"AI 예측 중 오류가 발생했습니다:\n{str(e)}")
+
+    def show_interactive_dashboard(self):
+        """인터랙티브 대시보드 실행"""
+        if not NEW_AI_MODULES_AVAILABLE:
+            QMessageBox.warning(self, "기능 제한", "2025 AI 모듈이 설치되지 않았습니다.")
+            return
+
+        try:
+            self.log_output.append("[INFO] 📊 인터랙티브 대시보드 생성 중...")
+
+            # 대시보드 HTML 생성 및 브라우저 열기
+            dashboard = InteractiveDashboard()
+
+            # 최신 데이터 로드 (AI 예측과 동일한 방식)
+            import glob
+            import pandas as pd
+
+            archive_dir = config.get_report_archive_dir()
+            # 일간통합리포트 폴더에서만 검색 (중복 방지)
+            daily_report_dir = os.path.join(archive_dir, "일간통합리포트")
+            report_files = glob.glob(os.path.join(daily_report_dir, "전체_통합_리포트_*.xlsx"))
+
+            if not report_files:
+                QMessageBox.information(self, "데이터 없음", "대시보드에 표시할 리포트 파일이 없습니다.")
+                return
+
+            # 최신 파일들 로드
+            report_files.sort(key=os.path.getmtime, reverse=True)
+            latest_files = report_files[:10]  # 최신 10개 파일
+
+            all_data = []
+            for file in latest_files:
+                try:
+                    # 올바른 시트명으로 데이터 로드
+                    df = pd.read_excel(file, sheet_name='전체 통합 데이터')
+                    all_data.append(df)
+                except Exception:
+                    continue
+
+            if not all_data:
+                QMessageBox.warning(self, "데이터 오류", "유효한 데이터를 로드할 수 없습니다.")
+                return
+
+            combined_df = pd.concat(all_data, ignore_index=True)
+
+            # DataFrame을 딕셔너리 리스트로 변환
+            sales_data = combined_df.to_dict('records')
+
+            # 대시보드 생성
+            dashboard_html = dashboard.create_executive_summary_dashboard(sales_data)
+
+            # 임시 HTML 파일 저장 및 브라우저 열기
+            import tempfile
+            import webbrowser
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as f:
+                f.write(dashboard_html)
+                temp_path = f.name
+
+            webbrowser.open('file://' + temp_path.replace('\\', '/'))
+
+            self.log_output.append("[INFO] ✅ 인터랙티브 대시보드 생성 완료 - 브라우저에서 확인하세요")
+
+        except Exception as e:
+            self.log_output.append(f"[ERROR] 대시보드 생성 중 오류: {str(e)}")
+            QMessageBox.critical(self, "오류", f"대시보드 생성 중 오류가 발생했습니다:\n{str(e)}")
+
+    def show_smart_insights(self):
+        """스마트 인사이트 실행"""
+        if not NEW_AI_MODULES_AVAILABLE:
+            QMessageBox.warning(self, "기능 제한", "2025 AI 모듈이 설치되지 않았습니다.")
+            return
+
+        try:
+            self.log_output.append("[INFO] 💡 스마트 인사이트 생성 중...")
+
+            # 인사이트 생성기 초기화
+            insight_generator = SmartInsightGenerator()
+
+            # 최신 데이터 로드
+            import glob
+            import pandas as pd
+
+            archive_dir = config.get_report_archive_dir()
+            # 일간통합리포트 폴더에서만 검색 (중복 방지)
+            daily_report_dir = os.path.join(archive_dir, "일간통합리포트")
+            report_files = glob.glob(os.path.join(daily_report_dir, "전체_통합_리포트_*.xlsx"))
+
+            if not report_files:
+                QMessageBox.information(self, "데이터 없음", "분석할 리포트 파일이 없습니다.")
+                return
+
+            # 최신 파일들 로드
+            report_files.sort(key=os.path.getmtime, reverse=True)
+            latest_files = report_files[:7]  # 최신 7개 파일
+
+            all_data = []
+            for file in latest_files:
+                try:
+                    # 올바른 시트명으로 데이터 로드
+                    df = pd.read_excel(file, sheet_name='전체 통합 데이터')
+                    all_data.append(df)
+                except Exception:
+                    continue
+
+            if not all_data:
+                QMessageBox.warning(self, "데이터 오류", "유효한 데이터를 로드할 수 없습니다.")
+                return
+
+            combined_df = pd.concat(all_data, ignore_index=True)
+            sales_data = combined_df.to_dict('records')
+
+            # 인사이트 생성
+            insights = insight_generator.generate_comprehensive_insights(sales_data)
+
+            # 결과 포맷팅
+            insight_text = f"""
+💡 스마트 인사이트 분석 결과
+
+📊 분석 개요:
+• 분석 상품: {len(combined_df)}개
+• 분석 기간: {len(latest_files)}일
+• 총 매출: {combined_df['매출'].sum():,.0f}원
+
+🎯 핵심 인사이트:
+{insights.get('executive_summary', '인사이트를 생성할 수 없습니다.')}
+
+📈 성과 분석:
+• 최고 성과 상품: {insights.get('top_product', 'N/A')}
+• 성장률: {insights.get('growth_rate', 0):.1f}%
+• 수익성 점수: {insights.get('profitability_score', 0):.1f}점
+
+⚠️ 주의 사항:
+{insights.get('warnings', '특별한 주의사항이 없습니다.')}
+
+🚀 개선 제안:
+{insights.get('recommendations', '추가 분석이 필요합니다.')}
+            """
+
+            # 결과 다이얼로그 표시
+            msg = QMessageBox(self)
+            msg.setWindowTitle("💡 스마트 인사이트")
+            msg.setText(insight_text)
+            msg.setStyleSheet("QMessageBox { font-size: 12px; } QMessageBox QLabel { min-width: 500px; }")
+            msg.exec()
+
+            self.log_output.append("[INFO] ✅ 스마트 인사이트 생성 완료")
+
+        except Exception as e:
+            self.log_output.append(f"[ERROR] 스마트 인사이트 생성 중 오류: {str(e)}")
+            QMessageBox.critical(self, "오류", f"스마트 인사이트 생성 중 오류가 발생했습니다:\n{str(e)}")
+
+    def start_mobile_web(self):
+        """모바일 웹 서버 시작"""
+        if not NEW_AI_MODULES_AVAILABLE:
+            QMessageBox.warning(self, "기능 제한", "2025 AI 모듈이 설치되지 않았습니다.")
+            return
+
+        try:
+            self.log_output.append("[INFO] 📱 모바일 웹 서버 시작 중...")
+
+            # Context7 모범 사례: 포트 사용 가능 여부 확인
+            import socket
+            port = 8000
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                result = sock.connect_ex(('localhost', port))
+                if result == 0:
+                    port = 8001  # 포트가 사용 중이면 다른 포트 사용
+                    self.log_output.append(f"[INFO] 포트 8000이 사용 중, 포트 {port} 사용")
+
+            # 모바일 웹 API 서버 초기화
+            mobile_api = MobileWebAPI(debug=True, port=port)
+
+            # Context7 모범 사례: 강화된 서버 시작 로직
+            import threading
+            import time
+
+            def start_server():
+                try:
+                    self.log_output.append(f"[INFO] 서버를 http://localhost:{port}에서 시작합니다...")
+                    mobile_api.run(host="127.0.0.1")  # localhost로 제한
+                except Exception as e:
+                    self.log_output.append(f"[ERROR] 모바일 웹 서버 오류: {str(e)}")
+                    import traceback
+                    self.log_output.append(f"[DEBUG] 상세 오류: {traceback.format_exc()}")
+
+            server_thread = threading.Thread(target=start_server, daemon=True)
+            server_thread.start()
+
+            # 서버 준비 확인 후 브라우저 열기
+            def open_browser():
+                import requests
+                import webbrowser
+
+                # 서버가 준비될 때까지 최대 10초 대기
+                for i in range(50):  # 0.2초씩 50번 = 10초
+                    try:
+                        response = requests.get(f'http://localhost:{port}/', timeout=1)
+                        if response.status_code == 200:
+                            webbrowser.open(f'http://localhost:{port}')
+                            self.log_output.append(f"[INFO] 브라우저가 http://localhost:{port}에서 열렸습니다")
+                            return
+                    except:
+                        pass
+                    time.sleep(0.2)
+
+                self.log_output.append("[WARNING] 서버 응답을 확인할 수 없습니다. 수동으로 접속해보세요.")
+
+            browser_thread = threading.Thread(target=open_browser, daemon=True)
+            browser_thread.start()
+
+            self.log_output.append("[INFO] ✅ 모바일 웹 서버 시작 완료")
+            self.log_output.append(f"[INFO] 🌐 브라우저에서 http://localhost:{port} 접속하세요")
+
+            # 사용자에게 알림
+            QMessageBox.information(
+                self,
+                "모바일 웹 서버 시작",
+                f"모바일 웹 서버가 시작되었습니다.\n\n"
+                f"브라우저에서 http://localhost:{port} 에 접속하거나\n"
+                f"모바일 기기에서 같은 네트워크의 PC IP로 접속하세요.\n\n"
+                f"예: http://192.168.1.100:{port}"
+            )
+
+        except Exception as e:
+            self.log_output.append(f"[ERROR] 모바일 웹 서버 시작 중 오류: {str(e)}")
+            QMessageBox.critical(self, "오류", f"모바일 웹 서버 시작 중 오류가 발생했습니다:\n{str(e)}")
 
 def main():
     app = QApplication(sys.argv)
