@@ -4,6 +4,7 @@ import os
 import logging
 import json
 import pandas as pd
+from pathlib import Path
 from datetime import datetime, date
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
@@ -30,6 +31,15 @@ from modules.settings import get_settings, set_download_dir, set_polars_enabled,
 from modules.logger import get_logger, setup_app_logging, log_performance
 from modules.updater import SalesAutomationUpdater
 
+# 순위 추적 UI 컴포넌트 임포트
+try:
+    from modules.ui_rank_tracking import RankTrackingWidget
+    RANK_TRACKING_AVAILABLE = True
+    logging.info("순위 추적 UI 컴포넌트 임포트 성공")
+except ImportError as e:
+    RANK_TRACKING_AVAILABLE = False
+    logging.warning(f"순위 추적 UI 컴포넌트 임포트 실패: {e}")
+
 # Import AI modules
 try:
     from modules.analytics import SalesAnalytics
@@ -41,18 +51,20 @@ except ImportError as e:
     AI_MODULES_AVAILABLE = False
     logging.warning(f"AI 모듈 임포트 실패: {e}")
 
-# Import new 2025 AI modules
+# 2025 AI 모듈은 제거됨
+NEW_AI_MODULES_AVAILABLE = False
+
+# UI 컴포넌트 임포트 (Context7 모범 사례)
 try:
-    from modules.ai_predictor import SalesPredictor
-    from modules.interactive_dashboard import InteractiveDashboard
-    from modules.smart_insights import SmartInsightGenerator
-    from modules.advanced_charts import AdvancedChartEngine
-    from modules.mobile_web_api import MobileWebAPI
-    NEW_AI_MODULES_AVAILABLE = True
-    logging.info("2025 AI 모듈 임포트 성공")
+    from modules.ui_components import (
+        NotificationManager, WorkflowProgressGuide, SmartTooltipManager,
+        UIComponentFactory, WorkflowStep, NotificationType
+    )
+    UI_COMPONENTS_AVAILABLE = True
+    logging.info("UI 컴포넌트 모듈 임포트 성공")
 except ImportError as e:
-    NEW_AI_MODULES_AVAILABLE = False
-    logging.warning(f"2025 AI 모듈 임포트 실패: {e}")
+    UI_COMPONENTS_AVAILABLE = False
+    logging.warning(f"UI 컴포넌트 모듈 임포트 실패: {e}")
 
 # --- UI Styling Classes ---
 
@@ -2402,31 +2414,277 @@ class ModernSalesAutomationApp(QMainWindow):
         # 자동 업데이트 시스템 초기화
         self.updater = SalesAutomationUpdater(current_version="2.0.0")
 
-        # 시작 시 업데이트 확인 (백그라운드)
-        if self.settings.check_updates:
-            QTimer.singleShot(3000, self.check_for_updates)  # 3초 후 확인
+        # 시작 시 업데이트 확인 (백그라운드) - 비활성화
+        # if self.settings.check_updates:
+        #     QTimer.singleShot(3000, self.check_for_updates)  # 3초 후 확인
+
+        # Context7 모범 사례: UI 컴포넌트 초기화
+        self.init_ui_components()
+
+    def init_ui_components(self):
+        """Context7 모범 사례: UI 컴포넌트 초기화"""
+        if not UI_COMPONENTS_AVAILABLE:
+            return
+
+        # 알림 관리자 초기화
+        self.notification_manager = NotificationManager(self)
+
+        # 스마트 툴팁 관리자 초기화
+        self.tooltip_manager = SmartTooltipManager()
+
+        # 워크플로우 가이드 초기화 (init_ui 이후에 추가됨)
+        self.workflow_guide = None
+
+        # 현재 워크플로우 상태
+        self.current_workflow_step = WorkflowStep.FOLDER_SETUP
 
     def init_ui(self):
-        self.setWindowTitle("📊 판매 데이터 자동화")
-        self.setMinimumSize(1200, 800)
+        self.setWindowTitle("📊 판매 데이터 자동화 & 순위 추적")
+        self.setMinimumSize(1400, 900)
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(20)
+
+        # 헤더는 탭 위에 공통으로 표시
         main_layout.addLayout(self.create_header())
-        main_layout.addWidget(self.create_settings_section())
-        main_layout.addWidget(self.create_stats_section())
-        main_layout.addWidget(self.create_log_section())
+
+        # 탭 위젯 생성
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setTabPosition(QTabWidget.North)
+
+        # 탭 스타일 설정
+        self.tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                background: #ffffff;
+                margin-top: 8px;
+            }
+            QTabBar::tab {
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-bottom: none;
+                padding: 12px 24px;
+                margin-right: 4px;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                font-weight: 600;
+                min-width: 120px;
+            }
+            QTabBar::tab:selected {
+                background: #ffffff;
+                color: #2563eb;
+                border-bottom: 2px solid #2563eb;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #e9ecef;
+            }
+        """)
+
+        # 데이터 자동화 탭
+        self.automation_tab = self.create_automation_tab()
+        self.tab_widget.addTab(self.automation_tab, "📊 데이터 자동화")
+
+        # 순위 추적 탭
+        if RANK_TRACKING_AVAILABLE:
+            self.rank_tracking_tab = RankTrackingWidget()
+            self.tab_widget.addTab(self.rank_tracking_tab, "🔍 순위 추적")
+
+        main_layout.addWidget(self.tab_widget)
         self.statusBar().showMessage("✅ 준비됨")
 
         # 초기화 완료 후 성능 버튼 상태 업데이트
+        self.setup_smart_tooltips()
+
+    def create_automation_tab(self):
+        """데이터 자동화 탭 생성"""
+        tab_widget = QWidget()
+        layout = QVBoxLayout(tab_widget)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
+
+        # Context7 모범 사례: 워크플로우 가이드 추가
+        if UI_COMPONENTS_AVAILABLE:
+            self.workflow_guide = WorkflowProgressGuide()
+            self.workflow_guide.next_action_requested.connect(self.handle_workflow_action)
+            layout.addWidget(self.workflow_guide)
+
+            # 초기 단계 설정
+            self.update_workflow_step(WorkflowStep.FOLDER_SETUP)
+
+        layout.addWidget(self.create_settings_section())
+        layout.addWidget(self.create_stats_section())
+        layout.addWidget(self.create_log_section())
+
+        return tab_widget
+
+    def update_workflow_step(self, step: WorkflowStep):
+        """Context7 모범 사례: 워크플로우 단계 업데이트"""
+        if not UI_COMPONENTS_AVAILABLE or not self.workflow_guide:
+            return
+
+        self.current_workflow_step = step
+
+        # 단계별 설정
+        step_configs = {
+            WorkflowStep.FOLDER_SETUP: UIComponentFactory.create_step_guide(
+                step=WorkflowStep.FOLDER_SETUP,
+                title="1단계: 폴더 설정",
+                description="Excel 파일이 있는 다운로드 폴더를 선택해주세요",
+                next_action="📁 폴더 선택" if not self.download_folder_path else None
+            ),
+            WorkflowStep.AUTOMATION_START: UIComponentFactory.create_step_guide(
+                step=WorkflowStep.AUTOMATION_START,
+                title="2단계: 자동화 시작",
+                description="설정이 완료되었습니다. 자동화를 시작하세요",
+                next_action="🚀 자동화 시작"
+            ),
+            WorkflowStep.MONITORING: UIComponentFactory.create_step_guide(
+                step=WorkflowStep.MONITORING,
+                title="자동화 실행 중",
+                description="파일 모니터링이 시작되었습니다. 새 파일을 폴더에 넣으면 자동 처리됩니다",
+                next_action="⏹️ 중지"
+            ),
+            WorkflowStep.RESULT_CHECK: UIComponentFactory.create_step_guide(
+                step=WorkflowStep.RESULT_CHECK,
+                title="3단계: 결과 확인",
+                description="자동화가 완료되었습니다. 생성된 리포트를 확인하세요",
+                next_action="📋 리포트 보기"
+            ),
+            WorkflowStep.ADVANCED_FEATURES: UIComponentFactory.create_step_guide(
+                step=WorkflowStep.ADVANCED_FEATURES,
+                title="추가 기능 활용",
+                description="리워드 관리, 주간 리포트 등 고급 기능을 활용해보세요",
+                next_action=None
+            )
+        }
+
+        config = step_configs.get(step)
+        if config:
+            self.workflow_guide.update_step(config)
+
+    def handle_workflow_action(self, action: str):
+        """Context7 모범 사례: 워크플로우 액션 처리"""
+        action_handlers = {
+            "📁 폴더 선택": self.select_folder,
+            "🚀 자동화 시작": self.start_monitoring,
+            "📋 리포트 보기": self.open_report_folder
+        }
+
+        handler = action_handlers.get(action)
+        if handler:
+            handler()
+
+    def open_report_folder(self):
+        """리포트 폴더 열기"""
+        import subprocess
+        import platform
+
+        try:
+            report_dir = config.get_report_archive_dir()
+            if report_dir.exists():
+                if platform.system() == "Windows":
+                    subprocess.run(["explorer", str(report_dir)])
+                elif platform.system() == "Darwin":  # macOS
+                    subprocess.run(["open", str(report_dir)])
+                else:  # Linux
+                    subprocess.run(["xdg-open", str(report_dir)])
+
+                self.show_notification(
+                    NotificationType.SUCCESS,
+                    "폴더 열기 완료",
+                    f"리포트 폴더가 열렸습니다: {report_dir}"
+                )
+        except Exception as e:
+            self.show_notification(
+                NotificationType.ERROR,
+                "폴더 열기 실패",
+                f"리포트 폴더를 열 수 없습니다: {str(e)}"
+            )
+
+    def show_notification(self, notification_type: NotificationType, title: str, message: str, **kwargs):
+        """Context7 모범 사례: 알림 표시"""
+        if not UI_COMPONENTS_AVAILABLE:
+            # 기존 로그 방식 대체
+            self.update_log(f"[{notification_type.value.upper()}] {title}: {message}")
+            return
+
+        config_factory = {
+            NotificationType.SUCCESS: UIComponentFactory.create_success_notification,
+            NotificationType.ERROR: UIComponentFactory.create_error_notification,
+            NotificationType.WARNING: lambda t, m, **k: UIComponentFactory.create_error_notification(t, m, **k),
+            NotificationType.INFO: UIComponentFactory.create_success_notification
+        }
+
+        factory_method = config_factory.get(notification_type, UIComponentFactory.create_success_notification)
+        config = factory_method(title, message, **kwargs)
+        self.notification_manager.show_notification(config)
+
+    def setup_smart_tooltips(self):
+        """Context7 모범 사례: 스마트 툴팁 설정 (안전한 초기화 체크)"""
+        if not UI_COMPONENTS_AVAILABLE:
+            return
+
+        # Context7 모범 사례: 안전한 초기화 체크
+        if not hasattr(self, 'tooltip_manager') or self.tooltip_manager is None:
+            self.tooltip_manager = SmartTooltipManager()
+
+        # 폴더 선택 상태에 따른 툴팁
+        self.update_folder_tooltip()
+
+        # 버튼별 상태 기반 툴팁
+        try:
+            self.tooltip_manager.update_tooltip(
+                self.start_btn, "automation_button",
+                "ready" if self.download_folder_path else "disabled"
+            )
+
+            self.tooltip_manager.update_tooltip(
+                self.password_input, "password_input", "default"
+            )
+        except Exception as e:
+            # 툴팁 설정 실패 시 조용히 무시 (기능에 영향 없음)
+            pass
+
+    def update_folder_tooltip(self):
+        """폴더 선택 상태 기반 툴팁 업데이트 (Context7 안전 처리)"""
+        if not UI_COMPONENTS_AVAILABLE:
+            return
+
+        # Context7 모범 사례: 안전한 초기화 체크
+        if not hasattr(self, 'tooltip_manager') or self.tooltip_manager is None:
+            return
+
+        try:
+            if not self.download_folder_path:
+                state = "empty"
+            elif Path(self.download_folder_path).exists():
+                state = "selected"
+            else:
+                state = "invalid"
+
+            self.tooltip_manager.update_tooltip(
+                self.folder_label, "folder_selection", state
+            )
+        except Exception as e:
+            # 툴팁 업데이트 실패 시 조용히 무시
+            pass
 
     def create_header(self):
+        """Context7 모범 사례: 안전한 헤더 생성 (이모지 제외)"""
         header_layout = QHBoxLayout()
-        icon_label = QLabel("📊"); title_label = QLabel("판매 데이터 자동화")
-        title_label.setStyleSheet("font-size: 28px; font-weight: 700;")
-        header_layout.addWidget(icon_label); header_layout.addWidget(title_label); header_layout.addStretch()
+        # Context7 모범 사례: 이모지 대신 텍스트 아이콘 사용
+        icon_label = QLabel("[판매데이터]")
+        icon_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #2563eb;")
+
+        title_label = QLabel("자동화 시스템")
+        title_label.setStyleSheet("font-size: 28px; font-weight: 700; color: #1f2937;")
+
+        header_layout.addWidget(icon_label)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
         return header_layout
 
     def create_settings_section(self):
@@ -2485,28 +2743,14 @@ class ModernSalesAutomationApp(QMainWindow):
         self.weekly_report_btn = AppleStyleButton("📅 주간 리포트", "fa5s.calendar-week", "#10b981"); self.weekly_report_btn.clicked.connect(self.show_weekly_report_dialog)
         self.ai_analysis_btn = AppleStyleButton("🤖 AI 분석", "fa5s.brain", "#6366f1"); self.ai_analysis_btn.clicked.connect(self.start_ai_analysis)
         self.update_btn = AppleStyleButton("🔄 업데이트 확인", "fa5s.download", "#6b7280"); self.update_btn.clicked.connect(self.manual_check_updates)
+        self.update_btn.setEnabled(False)
+        self.update_btn.setToolTip("업데이트 기능이 비활성화되었습니다")
 
         # AI 버튼 활성화 여부 설정
         if not AI_MODULES_AVAILABLE:
             self.ai_analysis_btn.setEnabled(False)
             self.ai_analysis_btn.setToolTip("AI 모듈이 설치되지 않았습니다")
 
-        # 2025 AI 기능 버튼들 추가
-        self.ai_predict_btn = AppleStyleButton("🔮 AI 예측", "fa5s.crystal-ball", "#8b5cf6"); self.ai_predict_btn.clicked.connect(self.show_ai_predictions)
-        self.dashboard_btn = AppleStyleButton("📊 대시보드", "fa5s.chart-area", "#059669"); self.dashboard_btn.clicked.connect(self.show_interactive_dashboard)
-        self.insights_btn = AppleStyleButton("💡 스마트 인사이트", "fa5s.lightbulb", "#f59e0b"); self.insights_btn.clicked.connect(self.show_smart_insights)
-        self.mobile_web_btn = AppleStyleButton("📱 모바일 웹", "fa5s.mobile-alt", "#10b981"); self.mobile_web_btn.clicked.connect(self.start_mobile_web)
-
-        # 2025 AI 버튼 활성화 여부 설정
-        if not NEW_AI_MODULES_AVAILABLE:
-            self.ai_predict_btn.setEnabled(False)
-            self.ai_predict_btn.setToolTip("2025 AI 모듈이 설치되지 않았습니다")
-            self.dashboard_btn.setEnabled(False)
-            self.dashboard_btn.setToolTip("2025 AI 모듈이 설치되지 않았습니다")
-            self.insights_btn.setEnabled(False)
-            self.insights_btn.setToolTip("2025 AI 모듈이 설치되지 않았습니다")
-            self.mobile_web_btn.setEnabled(False)
-            self.mobile_web_btn.setToolTip("2025 AI 모듈이 설치되지 않았습니다")
 
         # 기본 버튼들 첫 번째 줄
         control_layout.addWidget(self.start_btn); control_layout.addWidget(self.stop_btn); control_layout.addWidget(self.manual_btn)
@@ -2515,12 +2759,6 @@ class ModernSalesAutomationApp(QMainWindow):
         control_layout.addStretch()
         layout.addLayout(control_layout)
 
-        # 두 번째 줄에 2025 AI 기능들 배치
-        control_layout2 = QHBoxLayout()
-        control_layout2.addWidget(self.ai_predict_btn); control_layout2.addWidget(self.dashboard_btn)
-        control_layout2.addWidget(self.insights_btn); control_layout2.addWidget(self.mobile_web_btn)
-        control_layout2.addStretch()
-        layout.addLayout(control_layout2)
 
         return settings_card
 
@@ -2568,26 +2806,83 @@ class ModernSalesAutomationApp(QMainWindow):
         return log_card
 
     def setup_logging(self):
-        # 레거시 로깅 설정 (기본 호환성)
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.FileHandler('sales_automation.log', encoding='utf-8'), logging.StreamHandler()])
+        """Context7 모범 사례: 안전한 UTF-8 로깅 설정"""
+        try:
+            # Context7 모범 사례: UTF-8 인코딩으로 콘솔 및 파일 로깅 설정
+            import sys
+            import io
+
+            # 콘솔 출력을 UTF-8로 설정 (이모지 지원)
+            if hasattr(sys.stdout, 'reconfigure'):
+                sys.stdout.reconfigure(encoding='utf-8')
+                sys.stderr.reconfigure(encoding='utf-8')
+
+            # 로깅 핸들러 설정
+            handlers = [
+                # 파일 핸들러: UTF-8 인코딩
+                logging.FileHandler('sales_automation.log', encoding='utf-8'),
+                # 콘솔 핸들러: 안전한 콘솔 출력
+                logging.StreamHandler(sys.stdout)
+            ]
+
+            # 로깅 기본 설정
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s - %(levelname)s - %(message)s',
+                handlers=handlers,
+                force=True  # 기존 설정 덮어쓰기
+            )
+
+            # Context7 모범 사례: 로깅 테스트 (이모지 제외)
+            logging.info("UTF-8 로깅 시스템 초기화 완료")
+
+        except Exception as e:
+            # 로깅 설정 실패 시 기본 설정
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s - %(levelname)s - %(message)s'
+            )
+            print(f"\ub85c깅 설정 오류: {e}")
 
     def select_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "다운로드 폴더 선택")
         if folder:
             self.download_folder_path = folder
-            self.folder_label.setText(f"📁 {folder}")
+            # Context7 모범 사례: 안전한 폴더 라벨 설정 (이모지 제외)
+            self.folder_label.setText(f"폴더: {folder}")
             # Pydantic Settings에 저장
             from pathlib import Path
             set_download_dir(Path(folder))
             self.update_log(f"[INFO] 다운로드 폴더 설정: {folder}")
+
+            # Context7 모범 사례: 실시간 알림 및 워크플로우 업데이트
+            self.show_notification(
+                NotificationType.SUCCESS,
+                "폴더 설정 완료",
+                f"다운로드 폴더가 성공적으로 설정되었습니다\n경로: {folder}"
+            )
+
+            # 워크플로우 다음 단계로 진행
+            self.update_workflow_step(WorkflowStep.PASSWORD_SETUP)
 
     def update_password(self):
         self.password = self.password_input.text()
         # Pydantic Settings에 저장
         set_order_file_password(self.password)
 
+        # Context7 모범 사례: 패스워드 설정 알림
+        if self.password:
+            self.show_notification(
+                NotificationType.SUCCESS,
+                "패스워드 설정 완료",
+                "주문조회 파일 암호가 설정되었습니다"
+            )
+            # 워크플로우 다음 단계로 진행
+            if self.download_folder_path:
+                self.update_workflow_step(WorkflowStep.READY_TO_START)
+
     def toggle_polars_engine(self):
-        """Polars 엔진 토글"""
+        """Context7 모범 사례: Polars 엔진 토글 (안전한 유니코드 처리)"""
         use_polars = self.polars_checkbox.isChecked()
         set_engine(use_polars)
 
@@ -2597,18 +2892,36 @@ class ModernSalesAutomationApp(QMainWindow):
         current_engine = get_current_engine()
         engine_status = "활성화" if use_polars else "비활성화"
 
-        self.update_log(f"[INFO] 🚀 Polars 엔진 {engine_status}: {current_engine} 사용")
+        # Context7 모범 사례: 안전한 로깅 (이모지 제거)
+        safe_log_message = f"[INFO] Polars 엔진 {engine_status}: {current_engine} 사용"
+        self.update_log(safe_log_message)
 
         if use_polars:
-            self.update_log(f"[INFO] ⚡ 고성능 모드 활성화 - 대용량 데이터 처리 속도가 향상됩니다.")
+            self.update_log("[INFO] 고성능 모드 활성화 - 대용량 데이터 처리 속도가 향상됩니다")
         else:
-            self.update_log(f"[INFO] 📊 표준 모드 활성화 - Pandas 엔진을 사용합니다.")
+            self.update_log("[INFO] 표준 모드 활성화 - Pandas 엔진을 사용합니다")
+
+        # Context7 모범 사례: 알림 시스템 통합
+        notification_title = "Polars 엔진 활성화" if use_polars else "Pandas 엔진 활성화"
+        notification_message = f"데이터 처리 엔진이 {current_engine}으로 전환되었습니다"
+
+        self.show_notification(
+            NotificationType.SUCCESS,
+            notification_title,
+            notification_message
+        )
 
 
 
     @log_performance
     def start_monitoring(self):
         if not self.download_folder_path:
+            # Context7 모범 사례: 에러 알림 표시
+            self.show_notification(
+                NotificationType.ERROR,
+                "설정 오류",
+                "다운로드 폴더를 먼저 선택해주세요"
+            )
             QMessageBox.warning(self, "설정 오류", "다운로드 폴더를 먼저 선택해주세요.")
             return
 
@@ -2627,6 +2940,14 @@ class ModernSalesAutomationApp(QMainWindow):
                 self.update_log("[INFO] 이전 중지 플래그 파일을 삭제했습니다.")
             except Exception as e:
                 self.update_log(f"[ERROR] 중지 플래그 파일 삭제 실패: {e}")
+
+        # Context7 모범 사례: 시작 알림 및 워크플로우 업데이트
+        self.show_notification(
+            NotificationType.INFO,
+            "자동화 시작",
+            "판매 데이터 자동화 모니터링을 시작합니다"
+        )
+        self.update_workflow_step(WorkflowStep.MONITORING)
 
         self.set_controls_enabled(False)
         self.worker = ModernWorker(self.download_folder_path, self.password)
@@ -2649,8 +2970,22 @@ class ModernSalesAutomationApp(QMainWindow):
 
     def manual_process(self):
         if not self.download_folder_path:
+            # Context7 모범 사례: 에러 알림 표시
+            self.show_notification(
+                NotificationType.ERROR,
+                "설정 오류",
+                "다운로드 폴더를 먼저 선택해주세요"
+            )
             QMessageBox.warning(self, "설정 오류", "다운로드 폴더를 먼저 선택해주세요.")
             return
+
+        # Context7 모범 사례: 수동 처리 시작 알림
+        self.show_notification(
+            NotificationType.INFO,
+            "수동 처리 시작",
+            "작업폴더의 파일들을 수동으로 처리합니다"
+        )
+
         self.set_controls_enabled(False)
         self.manual_worker = ModernManualWorker(self.download_folder_path, self.password)
         self.manual_worker.output_signal.connect(self.update_log)
@@ -2739,12 +3074,34 @@ class ModernSalesAutomationApp(QMainWindow):
         self.set_controls_enabled(True)
         self.update_log("[INFO] ⏹️ 모니터링이 중지되었습니다.")
 
+        # Context7 모범 사례: 완료 알림 및 워크플로우 업데이트
+        self.show_notification(
+            NotificationType.SUCCESS,
+            "모니터링 완료",
+            "판매 데이터 자동화 모니터링이 완료되었습니다"
+        )
+        self.update_workflow_step(WorkflowStep.COMPLETED)
+
     def on_manual_finished(self):
         self.set_controls_enabled(True)
+
+        # Context7 모범 사례: 수동 처리 완료 알림
+        self.show_notification(
+            NotificationType.SUCCESS,
+            "수동 처리 완료",
+            "작업폴더의 파일 처리가 완료되었습니다"
+        )
 
     def on_weekly_report_finished(self):
         self.set_controls_enabled(True)
         self.update_log("[INFO] ✅ 주간 리포트 생성이 완료되었습니다.")
+
+        # Context7 모범 사례: 주간 리포트 완료 알림
+        self.show_notification(
+            NotificationType.SUCCESS,
+            "주간 리포트 완료",
+            "주간 통합 리포트가 성공적으로 생성되었습니다"
+        )
 
     def update_stats(self, stats_dict):
         """통계 카드들을 업데이트"""
@@ -2830,12 +3187,155 @@ class ModernSalesAutomationApp(QMainWindow):
                 self.app_logger.info(message)
 
     def set_controls_enabled(self, enabled):
+        """Context7 모범 사례: 상태 기반 시각적 피드백을 포함한 컨트롤 설정"""
+
+        # 기본 활성화/비활성화
         self.start_btn.setEnabled(enabled)
         self.manual_btn.setEnabled(enabled)
         self.weekly_report_btn.setEnabled(enabled)
         self.reward_btn.setEnabled(enabled)
         self.purchase_btn.setEnabled(enabled)
         self.stop_btn.setEnabled(not enabled)
+
+        # Context7 모범 사례: 상태에 따른 시각적 피드백
+        self.apply_visual_feedback(enabled)
+
+    def apply_visual_feedback(self, enabled):
+        """Context7 모범 사례: 상태에 따른 시각적 피드백 적용"""
+        try:
+            if enabled:
+                # 활성 상태: 기본 색상 및 스타일
+                self.start_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #28a745;
+                        color: white;
+                        border: 2px solid #28a745;
+                        border-radius: 8px;
+                        padding: 10px 20px;
+                        font-weight: bold;
+                        font-size: 14px;
+                    }
+                    QPushButton:hover {
+                        background-color: #218838;
+                        border-color: #1e7e34;
+                        transform: translateY(-2px);
+                    }
+                    QPushButton:pressed {
+                        background-color: #1e7e34;
+                        transform: translateY(0px);
+                    }
+                """)
+
+                self.manual_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #007bff;
+                        color: white;
+                        border: 2px solid #007bff;
+                        border-radius: 8px;
+                        padding: 10px 20px;
+                        font-weight: bold;
+                        font-size: 14px;
+                    }
+                    QPushButton:hover {
+                        background-color: #0056b3;
+                        border-color: #004085;
+                        transform: translateY(-2px);
+                    }
+                    QPushButton:pressed {
+                        background-color: #004085;
+                        transform: translateY(0px);
+                    }
+                """)
+
+                self.stop_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #6c757d;
+                        color: white;
+                        border: 2px solid #6c757d;
+                        border-radius: 8px;
+                        padding: 10px 20px;
+                        font-weight: bold;
+                        font-size: 14px;
+                        opacity: 0.6;
+                    }
+                """)
+
+            else:
+                # 비활성 상태: 회색 계열 및 로딩 효과
+                disabled_style = """
+                    QPushButton {
+                        background-color: #f8f9fa;
+                        color: #6c757d;
+                        border: 2px solid #e9ecef;
+                        border-radius: 8px;
+                        padding: 10px 20px;
+                        font-weight: bold;
+                        font-size: 14px;
+                        opacity: 0.6;
+                    }
+                """
+
+                self.start_btn.setStyleSheet(disabled_style)
+                self.manual_btn.setStyleSheet(disabled_style)
+
+                # 중지 버튼은 활성 상태로 강조
+                self.stop_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #dc3545;
+                        color: white;
+                        border: 2px solid #dc3545;
+                        border-radius: 8px;
+                        padding: 10px 20px;
+                        font-weight: bold;
+                        font-size: 14px;
+                        animation: pulse 1.5s infinite;
+                    }
+                    QPushButton:hover {
+                        background-color: #c82333;
+                        border-color: #bd2130;
+                        transform: scale(1.05);
+                    }
+                    QPushButton:pressed {
+                        background-color: #bd2130;
+                        transform: scale(0.95);
+                    }
+                """)
+
+            # 추가 시각적 효과
+            self.update_status_indicators(enabled)
+
+        except Exception as e:
+            # 시각적 피드백 오류는 조용히 무시 (기능에 영향 없음)
+            pass
+
+    def update_status_indicators(self, enabled):
+        """Context7 모범 사례: 상태 표시기 업데이트"""
+        try:
+            if hasattr(self, 'folder_label'):
+                if enabled:
+                    # 준비 상태
+                    self.folder_label.setStyleSheet("""
+                        QLabel {
+                            color: #28a745;
+                            font-weight: bold;
+                            padding: 5px;
+                            border-left: 4px solid #28a745;
+                            background-color: #f8fff9;
+                        }
+                    """)
+                else:
+                    # 작업 중 상태
+                    self.folder_label.setStyleSheet("""
+                        QLabel {
+                            color: #ffc107;
+                            font-weight: bold;
+                            padding: 5px;
+                            border-left: 4px solid #ffc107;
+                            background-color: #fffbf0;
+                        }
+                    """)
+        except Exception:
+            pass
     
     def load_settings(self):
         """애플리케이션 설정 로드"""
@@ -3081,348 +3581,6 @@ class ModernSalesAutomationApp(QMainWindow):
             # 오류가 있어도 종료 진행
             super().closeEvent(event)
 
-    # 2025 AI 기능 메서드들
-    def show_ai_predictions(self):
-        """AI 예측 기능 실행"""
-        if not NEW_AI_MODULES_AVAILABLE:
-            QMessageBox.warning(self, "기능 제한", "2025 AI 모듈이 설치되지 않았습니다.")
-            return
-
-        try:
-            self.log_output.append("[INFO] 🔮 AI 예측 분석 시작...")
-
-            # 최신 리포트 데이터 로드
-            import glob
-            import pandas as pd
-
-            archive_dir = config.get_report_archive_dir()
-            # 일간통합리포트 폴더에서만 검색 (중복 방지)
-            daily_report_dir = os.path.join(archive_dir, "일간통합리포트")
-
-            # 디버깅: 실제 검색 경로 로그 출력
-            self.log_output.append(f"[DEBUG] 리포트 검색 경로: {daily_report_dir}")
-            self.log_output.append(f"[DEBUG] 폴더 존재 여부: {os.path.exists(daily_report_dir)}")
-
-            report_files = glob.glob(os.path.join(daily_report_dir, "전체_통합_리포트_*.xlsx"))
-            self.log_output.append(f"[DEBUG] 찾은 리포트 파일 수: {len(report_files)}")
-
-            if not report_files:
-                QMessageBox.information(self, "데이터 없음", f"분석할 리포트 파일이 없습니다.\n검색 경로: {daily_report_dir}")
-                return
-
-            # 최신 파일 몇 개 선택
-            report_files.sort(key=os.path.getmtime, reverse=True)
-            latest_files = report_files[:5]  # 최신 5개 파일
-
-            # 데이터 통합
-            all_data = []
-            for file in latest_files:
-                try:
-                    # 시트명 자동 감지
-                    xl_file = pd.ExcelFile(file)
-                    sheet_names = xl_file.sheet_names
-                    self.log_output.append(f"[DEBUG] {file} 시트명: {sheet_names}")
-
-                    # 가능한 시트명들 시도 (실제 시트명 '전체 통합 데이터' 우선)
-                    possible_sheets = ['전체 통합 데이터', '정리된 데이터', 'Sheet1', '전체 통합 리포트', '통합 리포트']
-                    df = None
-
-                    for sheet_name in possible_sheets:
-                        if sheet_name in sheet_names:
-                            df = pd.read_excel(file, sheet_name=sheet_name)
-                            self.log_output.append(f"[DEBUG] {sheet_name} 시트에서 {len(df)}개 행 로드")
-                            break
-
-                    if df is not None and len(df) > 0:
-                        all_data.append(df)
-                    else:
-                        self.log_output.append(f"[WARNING] {file}에서 유효한 데이터 시트를 찾을 수 없음")
-
-                except Exception as e:
-                    self.log_output.append(f"[ERROR] {file} 로드 실패: {str(e)}")
-                    continue
-
-            if not all_data:
-                QMessageBox.warning(self, "데이터 오류", "유효한 데이터를 로드할 수 없습니다.")
-                return
-
-            combined_df = pd.concat(all_data, ignore_index=True)
-
-            # AI 예측 실행
-            predictor = SalesPredictor()
-
-            # 데이터 변환 (pandas DataFrame을 예측기에 적합한 형태로)
-            sales_data = []
-            for _, row in combined_df.iterrows():
-                sales_data.append({
-                    'date': row.get('날짜', pd.Timestamp.now().strftime('%Y-%m-%d')),
-                    'product_id': str(row.get('상품ID', '')),
-                    'sales': float(row.get('매출', 0)),
-                    'quantity': int(row.get('수량', 0)),
-                    'margin': float(row.get('판매마진', 0))
-                })
-
-            # 예측 생성
-            predictions = predictor.predict_sales_trend(sales_data)
-            insights = predictor.generate_business_insights(sales_data, predictions)
-
-            # 결과 표시
-            result_text = f"""
-🔮 AI 예측 분석 결과
-
-📊 분석 대상: {len(combined_df)}개 상품, {len(latest_files)}개 파일
-
-🎯 주요 예측:
-• 다음 주 예상 매출: {predictions.get('next_week_sales', 0):,.0f}원
-• 성장률 전망: {predictions.get('growth_rate', 0):.1f}%
-• 리스크 레벨: {predictions.get('risk_level', 'Medium')}
-
-💡 비즈니스 인사이트:
-{insights.get('summary', '분석 중 오류가 발생했습니다.')}
-
-📈 추천 액션:
-{insights.get('recommendations', '추천 사항을 생성할 수 없습니다.')}
-            """
-
-            # 결과 다이얼로그 표시
-            msg = QMessageBox(self)
-            msg.setWindowTitle("🔮 AI 예측 결과")
-            msg.setText(result_text)
-            msg.setStyleSheet("QMessageBox { font-size: 12px; } QMessageBox QLabel { min-width: 500px; }")
-            msg.exec()
-
-            self.log_output.append("[INFO] ✅ AI 예측 분석 완료")
-
-        except Exception as e:
-            self.log_output.append(f"[ERROR] AI 예측 중 오류: {str(e)}")
-            QMessageBox.critical(self, "오류", f"AI 예측 중 오류가 발생했습니다:\n{str(e)}")
-
-    def show_interactive_dashboard(self):
-        """인터랙티브 대시보드 실행"""
-        if not NEW_AI_MODULES_AVAILABLE:
-            QMessageBox.warning(self, "기능 제한", "2025 AI 모듈이 설치되지 않았습니다.")
-            return
-
-        try:
-            self.log_output.append("[INFO] 📊 인터랙티브 대시보드 생성 중...")
-
-            # 대시보드 HTML 생성 및 브라우저 열기
-            dashboard = InteractiveDashboard()
-
-            # 최신 데이터 로드 (AI 예측과 동일한 방식)
-            import glob
-            import pandas as pd
-
-            archive_dir = config.get_report_archive_dir()
-            # 일간통합리포트 폴더에서만 검색 (중복 방지)
-            daily_report_dir = os.path.join(archive_dir, "일간통합리포트")
-            report_files = glob.glob(os.path.join(daily_report_dir, "전체_통합_리포트_*.xlsx"))
-
-            if not report_files:
-                QMessageBox.information(self, "데이터 없음", "대시보드에 표시할 리포트 파일이 없습니다.")
-                return
-
-            # 최신 파일들 로드
-            report_files.sort(key=os.path.getmtime, reverse=True)
-            latest_files = report_files[:10]  # 최신 10개 파일
-
-            all_data = []
-            for file in latest_files:
-                try:
-                    # 올바른 시트명으로 데이터 로드
-                    df = pd.read_excel(file, sheet_name='전체 통합 데이터')
-                    all_data.append(df)
-                except Exception:
-                    continue
-
-            if not all_data:
-                QMessageBox.warning(self, "데이터 오류", "유효한 데이터를 로드할 수 없습니다.")
-                return
-
-            combined_df = pd.concat(all_data, ignore_index=True)
-
-            # DataFrame을 딕셔너리 리스트로 변환
-            sales_data = combined_df.to_dict('records')
-
-            # 대시보드 생성
-            dashboard_html = dashboard.create_executive_summary_dashboard(sales_data)
-
-            # 임시 HTML 파일 저장 및 브라우저 열기
-            import tempfile
-            import webbrowser
-
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as f:
-                f.write(dashboard_html)
-                temp_path = f.name
-
-            webbrowser.open('file://' + temp_path.replace('\\', '/'))
-
-            self.log_output.append("[INFO] ✅ 인터랙티브 대시보드 생성 완료 - 브라우저에서 확인하세요")
-
-        except Exception as e:
-            self.log_output.append(f"[ERROR] 대시보드 생성 중 오류: {str(e)}")
-            QMessageBox.critical(self, "오류", f"대시보드 생성 중 오류가 발생했습니다:\n{str(e)}")
-
-    def show_smart_insights(self):
-        """스마트 인사이트 실행"""
-        if not NEW_AI_MODULES_AVAILABLE:
-            QMessageBox.warning(self, "기능 제한", "2025 AI 모듈이 설치되지 않았습니다.")
-            return
-
-        try:
-            self.log_output.append("[INFO] 💡 스마트 인사이트 생성 중...")
-
-            # 인사이트 생성기 초기화
-            insight_generator = SmartInsightGenerator()
-
-            # 최신 데이터 로드
-            import glob
-            import pandas as pd
-
-            archive_dir = config.get_report_archive_dir()
-            # 일간통합리포트 폴더에서만 검색 (중복 방지)
-            daily_report_dir = os.path.join(archive_dir, "일간통합리포트")
-            report_files = glob.glob(os.path.join(daily_report_dir, "전체_통합_리포트_*.xlsx"))
-
-            if not report_files:
-                QMessageBox.information(self, "데이터 없음", "분석할 리포트 파일이 없습니다.")
-                return
-
-            # 최신 파일들 로드
-            report_files.sort(key=os.path.getmtime, reverse=True)
-            latest_files = report_files[:7]  # 최신 7개 파일
-
-            all_data = []
-            for file in latest_files:
-                try:
-                    # 올바른 시트명으로 데이터 로드
-                    df = pd.read_excel(file, sheet_name='전체 통합 데이터')
-                    all_data.append(df)
-                except Exception:
-                    continue
-
-            if not all_data:
-                QMessageBox.warning(self, "데이터 오류", "유효한 데이터를 로드할 수 없습니다.")
-                return
-
-            combined_df = pd.concat(all_data, ignore_index=True)
-            sales_data = combined_df.to_dict('records')
-
-            # 인사이트 생성
-            insights = insight_generator.generate_comprehensive_insights(sales_data)
-
-            # 결과 포맷팅
-            insight_text = f"""
-💡 스마트 인사이트 분석 결과
-
-📊 분석 개요:
-• 분석 상품: {len(combined_df)}개
-• 분석 기간: {len(latest_files)}일
-• 총 매출: {combined_df['매출'].sum():,.0f}원
-
-🎯 핵심 인사이트:
-{insights.get('executive_summary', '인사이트를 생성할 수 없습니다.')}
-
-📈 성과 분석:
-• 최고 성과 상품: {insights.get('top_product', 'N/A')}
-• 성장률: {insights.get('growth_rate', 0):.1f}%
-• 수익성 점수: {insights.get('profitability_score', 0):.1f}점
-
-⚠️ 주의 사항:
-{insights.get('warnings', '특별한 주의사항이 없습니다.')}
-
-🚀 개선 제안:
-{insights.get('recommendations', '추가 분석이 필요합니다.')}
-            """
-
-            # 결과 다이얼로그 표시
-            msg = QMessageBox(self)
-            msg.setWindowTitle("💡 스마트 인사이트")
-            msg.setText(insight_text)
-            msg.setStyleSheet("QMessageBox { font-size: 12px; } QMessageBox QLabel { min-width: 500px; }")
-            msg.exec()
-
-            self.log_output.append("[INFO] ✅ 스마트 인사이트 생성 완료")
-
-        except Exception as e:
-            self.log_output.append(f"[ERROR] 스마트 인사이트 생성 중 오류: {str(e)}")
-            QMessageBox.critical(self, "오류", f"스마트 인사이트 생성 중 오류가 발생했습니다:\n{str(e)}")
-
-    def start_mobile_web(self):
-        """모바일 웹 서버 시작"""
-        if not NEW_AI_MODULES_AVAILABLE:
-            QMessageBox.warning(self, "기능 제한", "2025 AI 모듈이 설치되지 않았습니다.")
-            return
-
-        try:
-            self.log_output.append("[INFO] 📱 모바일 웹 서버 시작 중...")
-
-            # Context7 모범 사례: 포트 사용 가능 여부 확인
-            import socket
-            port = 8000
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                result = sock.connect_ex(('localhost', port))
-                if result == 0:
-                    port = 8001  # 포트가 사용 중이면 다른 포트 사용
-                    self.log_output.append(f"[INFO] 포트 8000이 사용 중, 포트 {port} 사용")
-
-            # 모바일 웹 API 서버 초기화
-            mobile_api = MobileWebAPI(debug=True, port=port)
-
-            # Context7 모범 사례: 강화된 서버 시작 로직
-            import threading
-            import time
-
-            def start_server():
-                try:
-                    self.log_output.append(f"[INFO] 서버를 http://localhost:{port}에서 시작합니다...")
-                    mobile_api.run(host="127.0.0.1")  # localhost로 제한
-                except Exception as e:
-                    self.log_output.append(f"[ERROR] 모바일 웹 서버 오류: {str(e)}")
-                    import traceback
-                    self.log_output.append(f"[DEBUG] 상세 오류: {traceback.format_exc()}")
-
-            server_thread = threading.Thread(target=start_server, daemon=True)
-            server_thread.start()
-
-            # 서버 준비 확인 후 브라우저 열기
-            def open_browser():
-                import requests
-                import webbrowser
-
-                # 서버가 준비될 때까지 최대 10초 대기
-                for i in range(50):  # 0.2초씩 50번 = 10초
-                    try:
-                        response = requests.get(f'http://localhost:{port}/', timeout=1)
-                        if response.status_code == 200:
-                            webbrowser.open(f'http://localhost:{port}')
-                            self.log_output.append(f"[INFO] 브라우저가 http://localhost:{port}에서 열렸습니다")
-                            return
-                    except:
-                        pass
-                    time.sleep(0.2)
-
-                self.log_output.append("[WARNING] 서버 응답을 확인할 수 없습니다. 수동으로 접속해보세요.")
-
-            browser_thread = threading.Thread(target=open_browser, daemon=True)
-            browser_thread.start()
-
-            self.log_output.append("[INFO] ✅ 모바일 웹 서버 시작 완료")
-            self.log_output.append(f"[INFO] 🌐 브라우저에서 http://localhost:{port} 접속하세요")
-
-            # 사용자에게 알림
-            QMessageBox.information(
-                self,
-                "모바일 웹 서버 시작",
-                f"모바일 웹 서버가 시작되었습니다.\n\n"
-                f"브라우저에서 http://localhost:{port} 에 접속하거나\n"
-                f"모바일 기기에서 같은 네트워크의 PC IP로 접속하세요.\n\n"
-                f"예: http://192.168.1.100:{port}"
-            )
-
-        except Exception as e:
-            self.log_output.append(f"[ERROR] 모바일 웹 서버 시작 중 오류: {str(e)}")
-            QMessageBox.critical(self, "오류", f"모바일 웹 서버 시작 중 오류가 발생했습니다:\n{str(e)}")
 
 def main():
     app = QApplication(sys.argv)

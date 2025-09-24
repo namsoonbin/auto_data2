@@ -24,3 +24,155 @@
 2025-09-23 11:54:02,378 - Updater - INFO - info:178 - 업데이트 확인 시작
 2025-09-23 11:54:02,416 - Updater - ERROR - error:192 - 업데이트 확인 실패 - {'error': '404 Client Error: Not Found for url: https://api.github.com/repos/your-repo/releases'}
 2025-09-23 11:54:02,417 - MainApp - ERROR - error:192 - [ERROR] 업데이트 확인 실패: cannot access local variable 'QMessageBox' where it is not associated with a value
+2025-09-23 15:53:03,371 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-23 15:53:03,387 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-23 15:53:06,391 - MainApp - INFO - info:178 - 자동 업데이트 확인 시작
+2025-09-23 15:53:06,391 - Updater - INFO - info:178 - 업데이트 확인 시작
+2025-09-23 15:53:06,721 - Updater - ERROR - error:192 - 업데이트 확인 실패 - {'error': '404 Client Error: Not Found for url: https://api.github.com/repos/your-repo/releases'}
+2025-09-23 15:53:06,722 - MainApp - INFO - info:178 - 현재 최신 버전입니다
+2025-09-23 15:53:09,548 - MainApp - INFO - info:178 - [INFO] 🔄 업데이트를 확인하고 있습니다...
+2025-09-23 15:53:09,568 - Updater - INFO - info:178 - 업데이트 확인 시작
+2025-09-23 15:53:09,610 - Updater - ERROR - error:192 - 업데이트 확인 실패 - {'error': '404 Client Error: Not Found for url: https://api.github.com/repos/your-repo/releases'}
+2025-09-23 15:53:09,611 - MainApp - ERROR - error:192 - [ERROR] 업데이트 확인 실패: cannot access local variable 'QMessageBox' where it is not associated with a value
+2025-09-23 15:56:26,044 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-23 15:56:26,046 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-23 15:57:35,995 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-23 15:57:35,996 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-23 15:57:38,746 - modules.compatibility - INFO - set_engine:24 - Polars 엔진으로 전환되었습니다
+2025-09-23 15:57:38,752 - modules.settings - INFO - save_to_file:162 - 설정이 저장되었습니다: settings.json
+2025-09-23 15:57:38,752 - MainApp - INFO - info:178 - [INFO] 🚀 Polars 엔진 활성화: polars 사용
+2025-09-23 15:57:38,760 - MainApp - INFO - info:178 - [INFO] ⚡ 고성능 모드 활성화 - 대용량 데이터 처리 속도가 향상됩니다.
+2025-09-23 15:57:39,101 - modules.compatibility - INFO - set_engine:30 - Pandas 엔진으로 전환되었습니다
+2025-09-23 15:57:39,102 - modules.settings - INFO - save_to_file:162 - 설정이 저장되었습니다: settings.json
+2025-09-23 15:57:39,103 - MainApp - INFO - info:178 - [INFO] 🚀 Polars 엔진 비활성화: pandas 사용
+2025-09-23 15:57:39,104 - MainApp - INFO - info:178 - [INFO] 📊 표준 모드 활성화 - Pandas 엔진을 사용합니다.
+2025-09-23 16:40:45,109 - INFO - UTF-8 로깅 시스템 초기화 완료
+2025-09-23 16:40:45,111 - INFO - Pandas 엔진으로 전환되었습니다
+2025-09-23 16:40:45,112 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-23 16:40:45,113 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-23 16:41:03,237 - modules.compatibility - INFO - set_engine:24 - Polars 엔진으로 전환되었습니다
+2025-09-23 16:41:03,238 - modules.settings - INFO - save_to_file:162 - 설정이 저장되었습니다: settings.json
+2025-09-23 16:41:03,238 - MainApp - INFO - info:178 - [INFO] Polars 엔진 활성화: polars 사용
+2025-09-23 16:41:03,238 - MainApp - INFO - info:178 - [INFO] 고성능 모드 활성화 - 대용량 데이터 처리 속도가 향상됩니다
+2025-09-23 16:41:03,244 - UIComponents - INFO - info:178 - 알림 표시 - {'type': 'success', 'title': 'Polars 엔진 활성화'}
+2025-09-23 16:41:12,658 - modules.settings - INFO - save_to_file:162 - 설정이 저장되었습니다: settings.json
+2025-09-23 16:41:12,659 - MainApp - INFO - info:178 - [INFO] 다운로드 폴더 설정: C:/Users/User/Desktop/auto_data2/data_automation/원본_보관함
+2025-09-23 16:41:12,662 - UIComponents - INFO - info:178 - 알림 표시 - {'type': 'success', 'title': '폴더 설정 완료'}
+2025-09-23 16:41:21,863 - modules.settings - INFO - save_to_file:162 - 설정이 저장되었습니다: settings.json
+2025-09-23 16:41:21,864 - MainApp - INFO - info:178 - [INFO] 다운로드 폴더 설정: C:/Users/User/Desktop/auto_data2/data_automation/원본_보관함
+2025-09-23 16:41:21,867 - UIComponents - INFO - info:178 - 알림 표시 - {'type': 'success', 'title': '폴더 설정 완료'}
+2025-09-24 11:39:34,882 - INFO - UTF-8 로깅 시스템 초기화 완료
+2025-09-24 11:39:35,235 - INFO - Polars 엔진으로 전환되었습니다
+2025-09-24 11:39:35,238 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-24 11:39:35,240 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-24 11:39:48,597 - modules.rank_tracker.database - INFO - __init__:209 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 11:40:01,068 - modules.rank_tracker.database - INFO - __init__:209 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 11:40:05,907 - modules.rank_tracker.database - INFO - __init__:209 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 11:40:07,163 - modules.rank_tracker.database - INFO - __init__:209 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 11:44:34,753 - INFO - UTF-8 로깅 시스템 초기화 완료
+2025-09-24 11:44:34,927 - INFO - Polars 엔진으로 전환되었습니다
+2025-09-24 11:44:34,928 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-24 11:44:34,929 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-24 11:48:50,954 - INFO - UTF-8 로깅 시스템 초기화 완료
+2025-09-24 11:48:51,126 - INFO - Polars 엔진으로 전환되었습니다
+2025-09-24 11:48:51,127 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-24 11:48:51,129 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-24 11:49:26,905 - modules.rank_tracker.database - INFO - __init__:209 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 11:49:33,166 - modules.rank_tracker.database - INFO - __init__:209 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 11:51:27,648 - INFO - UTF-8 로깅 시스템 초기화 완료
+2025-09-24 11:51:27,812 - INFO - Polars 엔진으로 전환되었습니다
+2025-09-24 11:51:27,813 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-24 11:51:27,814 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-24 16:08:15,911 - INFO - UTF-8 로깅 시스템 초기화 완료
+2025-09-24 16:08:16,344 - INFO - Polars 엔진으로 전환되었습니다
+2025-09-24 16:08:16,345 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-24 16:08:16,362 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-24 16:08:21,654 - modules.rank_tracker.database - INFO - __init__:210 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 16:08:26,218 - modules.rank_tracker.database - INFO - create_keyword:291 - 키워드 생성: 'dd' (ID: 1)
+2025-09-24 16:08:26,239 - modules.rank_tracker.database - INFO - create_target:386 - 추적 대상 생성: 'dd' (ID: 1)
+2025-09-24 16:08:26,262 - modules.rank_tracker.database - INFO - create_relation:472 - 연관관계 생성: 키워드 1 - 대상 1 (ID: 1)
+2025-09-24 16:08:26,268 - modules.rank_tracker.database - INFO - add_tracking_target:729 - 추적 대상 추가 완료: dd - dd
+2025-09-24 16:08:26,274 - modules.ui_rank_tracking - ERROR - load_data:287 - 데이터 로드 실패: 'TrackingTarget' object has no attribute 'target_rank'
+2025-09-24 16:08:31,231 - modules.rank_tracker.database - INFO - __init__:210 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 16:08:31,234 - modules.ui_rank_tracking - ERROR - update_status:897 - 상태 업데이트 실패: 'TrackingTarget' object has no attribute 'last_checked'
+2025-09-24 16:09:52,420 - INFO - UTF-8 로깅 시스템 초기화 완료
+2025-09-24 16:09:52,611 - INFO - Polars 엔진으로 전환되었습니다
+2025-09-24 16:09:52,612 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-24 16:09:52,613 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-24 16:09:55,943 - modules.rank_tracker.database - INFO - __init__:212 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 16:09:55,952 - modules.ui_rank_tracking - ERROR - load_data:287 - 데이터 로드 실패: 'TrackingTarget' object has no attribute 'current_rank'
+2025-09-24 16:10:03,244 - modules.rank_tracker.database - INFO - create_keyword:293 - 키워드 생성: 'ddd' (ID: 2)
+2025-09-24 16:10:03,253 - modules.rank_tracker.database - ERROR - _get_connection:260 - 데이터베이스 연결 오류: 중복된 상품 ID: 'dd'
+2025-09-24 16:10:03,254 - modules.ui_rank_tracking - ERROR - add_tracking_target:228 - 추적 대상 추가 실패: 데이터베이스 연결 실패: 중복된 상품 ID: 'dd'
+2025-09-24 16:10:07,632 - modules.rank_tracker.database - INFO - create_target:388 - 추적 대상 생성: 'dddd' (ID: 2)
+2025-09-24 16:10:07,652 - modules.rank_tracker.database - INFO - create_relation:474 - 연관관계 생성: 키워드 2 - 대상 2 (ID: 2)
+2025-09-24 16:10:07,658 - modules.rank_tracker.database - INFO - add_tracking_target:737 - 추적 대상 추가 완료: dddd - ddd
+2025-09-24 16:10:07,662 - modules.ui_rank_tracking - ERROR - load_data:287 - 데이터 로드 실패: 'TrackingTarget' object has no attribute 'current_rank'
+2025-09-24 16:10:10,526 - modules.rank_tracker.database - INFO - __init__:212 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 16:10:14,764 - modules.settings - INFO - save_to_file:220 - 설정이 저장되었습니다: settings.json
+2025-09-24 16:11:10,705 - INFO - UTF-8 로깅 시스템 초기화 완료
+2025-09-24 16:11:10,871 - INFO - Polars 엔진으로 전환되었습니다
+2025-09-24 16:11:10,872 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-24 16:11:10,873 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-24 16:11:15,387 - modules.rank_tracker.database - INFO - __init__:213 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 16:11:15,396 - modules.ui_rank_tracking - ERROR - load_data:287 - 데이터 로드 실패: 'TrackingTarget' object has no attribute 'store_name'
+2025-09-24 16:11:23,758 - modules.rank_tracker.database - INFO - create_keyword:294 - 키워드 생성: 'd' (ID: 3)
+2025-09-24 16:11:23,786 - modules.rank_tracker.database - INFO - create_target:389 - 추적 대상 생성: 'ddddd' (ID: 3)
+2025-09-24 16:11:23,806 - modules.rank_tracker.database - INFO - create_relation:475 - 연관관계 생성: 키워드 3 - 대상 3 (ID: 3)
+2025-09-24 16:11:23,812 - modules.rank_tracker.database - INFO - add_tracking_target:744 - 추적 대상 추가 완료: ddddd - d
+2025-09-24 16:11:23,816 - modules.ui_rank_tracking - ERROR - load_data:287 - 데이터 로드 실패: 'TrackingTarget' object has no attribute 'store_name'
+2025-09-24 16:11:26,902 - modules.rank_tracker.database - INFO - __init__:213 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 16:12:25,946 - INFO - UTF-8 로깅 시스템 초기화 완료
+2025-09-24 16:12:26,117 - INFO - Polars 엔진으로 전환되었습니다
+2025-09-24 16:12:26,118 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-24 16:12:26,119 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-24 16:12:28,385 - modules.rank_tracker.database - INFO - __init__:214 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 16:12:28,394 - modules.ui_rank_tracking - ERROR - load_data:287 - 데이터 로드 실패: 'TrackingTarget' object has no attribute 'enabled'
+2025-09-24 16:12:36,256 - modules.rank_tracker.database - INFO - create_keyword:295 - 키워드 생성: 'g' (ID: 4)
+2025-09-24 16:12:36,278 - modules.rank_tracker.database - INFO - create_target:390 - 추적 대상 생성: 'g' (ID: 4)
+2025-09-24 16:12:36,304 - modules.rank_tracker.database - INFO - create_relation:476 - 연관관계 생성: 키워드 4 - 대상 4 (ID: 4)
+2025-09-24 16:12:36,311 - modules.rank_tracker.database - INFO - add_tracking_target:746 - 추적 대상 추가 완료: g - g
+2025-09-24 16:12:36,315 - modules.ui_rank_tracking - ERROR - load_data:287 - 데이터 로드 실패: 'TrackingTarget' object has no attribute 'enabled'
+2025-09-24 16:12:40,705 - modules.rank_tracker.database - INFO - __init__:214 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 16:13:54,664 - INFO - UTF-8 로깅 시스템 초기화 완료
+2025-09-24 16:13:54,841 - INFO - Polars 엔진으로 전환되었습니다
+2025-09-24 16:13:54,842 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-24 16:13:54,844 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-24 16:13:57,636 - modules.rank_tracker.database - INFO - __init__:215 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 16:14:02,339 - modules.rank_tracker.database - INFO - create_keyword:296 - 키워드 생성: 'b' (ID: 5)
+2025-09-24 16:14:02,359 - modules.rank_tracker.database - INFO - create_target:391 - 추적 대상 생성: 'b' (ID: 5)
+2025-09-24 16:14:02,379 - modules.rank_tracker.database - INFO - create_relation:477 - 연관관계 생성: 키워드 5 - 대상 5 (ID: 5)
+2025-09-24 16:14:02,386 - modules.rank_tracker.database - INFO - add_tracking_target:748 - 추적 대상 추가 완료: b - b
+2025-09-24 16:14:04,209 - modules.rank_tracker.database - INFO - __init__:215 - 순위 데이터베이스 초기화 완료: rankwatch.db
+2025-09-24 16:30:38,879 - INFO - UTF-8 로깅 시스템 초기화 완료
+2025-09-24 16:30:39,057 - INFO - Polars 엔진으로 전환되었습니다
+2025-09-24 16:30:39,058 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-24 16:30:39,059 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-24 16:30:48,453 - MainApp - INFO - info:178 - 자동화 모니터링 시작 - {'download_folder': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\원본_보관함', 'password_set': True, 'polars_enabled': True}
+2025-09-24 16:30:48,464 - UIComponents - INFO - info:178 - 알림 표시 - {'type': 'success', 'title': '자동화 시작'}
+2025-09-24 16:30:48,468 - Performance - INFO - info:178 - 함수 실행 완료 - {'function': 'start_monitoring', 'duration_seconds': 0.015342, 'args_count': 1, 'kwargs_count': 0}
+2025-09-24 16:30:48,471 - root - INFO - process_existing_files:418 - ===== 기존 파일 스캔 시작 ====
+2025-09-24 16:30:48,473 - root - INFO - process_existing_files:438 - 제외할 시스템 폴더들: {'원본_보관함', '리포트보관함', '작업폴더'}
+2025-09-24 16:30:48,475 - root - INFO - process_existing_files:475 - 📊 파일 처리 결과: 0/0개 성공
+2025-09-24 16:30:48,475 - root - INFO - process_incomplete_files:489 - --- 작업폴더 미완료 파일 검사 시작 ---
+2025-09-24 16:30:48,476 - root - INFO - process_incomplete_files:509 - 작업폴더에 미처리 파일이 없습니다.
+2025-09-24 16:30:48,476 - root - INFO - process_existing_files:485 - ===== 기존 파일 스캔 완료 =====
+2025-09-24 16:30:48,476 - root - INFO - start_monitoring:840 - 
+===== 스마트 폴더 실시간 모니터링 시작 =====
+2025-09-24 16:30:48,476 - root - INFO - start_monitoring:841 - - 감시 대상: C:\Users\User\Desktop\auto_data2\data_automation\원본_보관함 (하위 폴더 포함)
+2025-09-24 16:30:48,476 - root - INFO - start_monitoring:842 - - 파일을 각 스토어 폴더에 넣으면 처리가 시작됩니다.
+2025-09-24 16:30:48,484 - MainApp - INFO - info:178 - [INFO] 자동화 시작!
+2025-09-24 16:30:51,227 - MainApp - INFO - info:178 - [INFO] ⏹️ 자동화 중지를 요청합니다...
+2025-09-24 16:30:51,228 - MainApp - INFO - info:178 - [INFO] 'stop.flag' 파일 생성 완료. 현재 작업 완료 후 모니터링이 종료됩니다.
+2025-09-24 16:30:51,479 - root - INFO - start_monitoring:853 - 'stop.flag' 파일 감지. 모니터링을 중지합니다.
+2025-09-24 16:30:51,480 - root - INFO - start_monitoring:861 - 
+===== 모니터링이 정상적으로 종료되었습니다. =====
+2025-09-24 16:30:51,498 - MainApp - INFO - info:178 - [INFO] ⏹️ 모니터링이 중지되었습니다.
+2025-09-24 16:30:51,500 - UIComponents - INFO - info:178 - 알림 표시 - {'type': 'success', 'title': '모니터링 완료'}
+2025-09-24 16:35:28,038 - INFO - UTF-8 로깅 시스템 초기화 완료
+2025-09-24 16:35:28,222 - INFO - Polars 엔진으로 전환되었습니다
+2025-09-24 16:35:28,223 - System - INFO - info:178 - 로깅 시스템 초기화 완료 - {'structlog_available': False}
+2025-09-24 16:35:28,225 - Updater - INFO - info:178 - 업데이터 초기화 - {'current_version': '2.0.0', 'exe_path': 'C:\\Users\\User\\Desktop\\auto_data2\\data_automation\\dist\\판매데이터자동화.exe', 'update_server': 'https://api.github.com/repos/your-repo/releases'}
+2025-09-24 16:35:40,182 - modules.settings - INFO - save_to_file:220 - 설정이 저장되었습니다: settings.json
+2025-09-24 16:35:40,183 - MainApp - INFO - info:178 - [INFO] 다운로드 폴더 설정: C:/Users/User/Desktop/auto_data2/data_automation/원본_보관함
+2025-09-24 16:35:40,186 - UIComponents - INFO - info:178 - 알림 표시 - {'type': 'success', 'title': '폴더 설정 완료'}

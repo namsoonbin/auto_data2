@@ -122,6 +122,63 @@ class AISettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="AI_")
 
 
+class RankTrackingSettings(BaseSettings):
+    """순위 추적 관련 설정"""
+    naver_client_id: Optional[str] = Field(default=None, description="네이버 API 클라이언트 ID")
+    naver_client_secret: Optional[str] = Field(default=None, description="네이버 API 클라이언트 Secret")
+    api_rate_limit_min: float = Field(default=0.3, description="API 호출 최소 간격 (초)")
+    api_rate_limit_max: float = Field(default=0.9, description="API 호출 최대 간격 (초)")
+    api_timeout: float = Field(default=10.0, description="API 타임아웃 (초)")
+    max_scan_depth: int = Field(default=1000, description="최대 순위 스캔 깊이")
+    retry_attempts: int = Field(default=3, description="API 재시도 횟수")
+
+    # 스케줄러 설정
+    schedule_interval_minutes: int = Field(default=10, description="순위 확인 간격 (분)")
+    max_concurrent_jobs: int = Field(default=3, description="최대 동시 작업 수")
+    error_threshold: int = Field(default=5, description="연속 오류 임계값")
+
+    # 데이터베이스 설정
+    db_file_name: str = Field(default="rankwatch.db", description="순위 데이터베이스 파일명")
+    data_retention_days: int = Field(default=90, description="데이터 보관 기간 (일)")
+
+    @field_validator('api_rate_limit_min', 'api_rate_limit_max')
+    @classmethod
+    def validate_rate_limits(cls, v):
+        if v <= 0 or v > 60:
+            raise ValueError("API 제한은 0~60초 사이여야 합니다")
+        return v
+
+    @field_validator('max_scan_depth')
+    @classmethod
+    def validate_scan_depth(cls, v):
+        if not (1 <= v <= 1000):
+            raise ValueError("스캔 깊이는 1~1000 범위여야 합니다")
+        return v
+
+    @field_validator('schedule_interval_minutes')
+    @classmethod
+    def validate_schedule_interval(cls, v):
+        if not (1 <= v <= 1440):  # 1분 ~ 24시간
+            raise ValueError("스케줄 간격은 1~1440분 사이여야 합니다")
+        return v
+
+    @field_validator('max_concurrent_jobs')
+    @classmethod
+    def validate_concurrent_jobs(cls, v):
+        if not (1 <= v <= 10):
+            raise ValueError("동시 작업 수는 1~10개 사이여야 합니다")
+        return v
+
+    @field_validator('data_retention_days')
+    @classmethod
+    def validate_retention_days(cls, v):
+        if not (7 <= v <= 365):
+            raise ValueError("데이터 보관 기간은 7~365일 사이여야 합니다")
+        return v
+
+    model_config = SettingsConfigDict(env_prefix="RANK_")
+
+
 class ApplicationSettings(BaseSettings):
     """애플리케이션 전체 설정"""
 
@@ -131,6 +188,7 @@ class ApplicationSettings(BaseSettings):
     paths: PathSettings = PathSettings()
     ui: UISettings = UISettings()
     ai: AISettings = AISettings()
+    rank_tracking: RankTrackingSettings = RankTrackingSettings()
 
     # 일반 설정
     debug_mode: bool = Field(default=False, description="디버그 모드")
@@ -158,7 +216,7 @@ class ApplicationSettings(BaseSettings):
         """설정을 JSON 파일로 저장"""
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(self.json(indent=2, ensure_ascii=False))
+                f.write(self.model_dump_json(indent=2))
             logger.info(f"설정이 저장되었습니다: {file_path}")
         except Exception as e:
             logger.error(f"설정 저장 실패: {e}")
@@ -171,7 +229,7 @@ class ApplicationSettings(BaseSettings):
             if file_path.exists():
                 with open(file_path, 'r', encoding='utf-8') as f:
                     data = f.read()
-                    settings = cls.parse_raw(data)
+                    settings = cls.model_validate_json(data)
                     logger.info(f"설정이 로드되었습니다: {file_path}")
                     return settings
             else:
