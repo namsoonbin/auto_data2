@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect, QSizePolicy, QDialogButtonBox, QTabWidget
 )
 from PySide6.QtCore import QThread, Signal, Qt, QDate, QTimer, QSettings
-from PySide6.QtGui import QColor, QIcon, QCursor
+from PySide6.QtGui import QColor, QIcon, QCursor, QFont
 
 # Try to import qtawesome for icons
 QTAWESOME_AVAILABLE = False
@@ -2487,10 +2487,37 @@ class ModernSalesAutomationApp(QMainWindow):
         self.automation_tab = self.create_automation_tab()
         self.tab_widget.addTab(self.automation_tab, "📊 데이터 자동화")
 
-        # 순위 추적 탭
-        if RANK_TRACKING_AVAILABLE:
-            self.rank_tracking_tab = RankTrackingWidget()
-            self.tab_widget.addTab(self.rank_tracking_tab, "🔍 순위 추적")
+        # 순위 추적 탭 (새로운 통합 시스템)
+        try:
+            self.unified_rank_widget = self.create_unified_rank_tab()
+            self.tab_widget.addTab(self.unified_rank_widget, "🎯 순위 추적")
+            logging.info("통합 순위 추적 시스템 로드 성공")
+        except Exception as e:
+            logging.error(f"통합 순위 추적 시스템 로드 실패: {e}")
+            # 오류 상황에서도 반드시 탭 생성
+            fallback_widget = QWidget()
+            fallback_layout = QVBoxLayout(fallback_widget)
+
+            error_label = QLabel("🔧 순위 추적 시스템 오류")
+            error_label.setFont(QFont('', 16, QFont.Bold))
+            error_label.setAlignment(Qt.AlignCenter)
+            error_label.setStyleSheet("color: #B3261E; margin: 20px;")
+
+            detail_label = QLabel(f"오류 내용: {str(e)}")
+            detail_label.setAlignment(Qt.AlignCenter)
+            detail_label.setStyleSheet("color: #625B71; font-size: 12px; margin: 10px;")
+            detail_label.setWordWrap(True)
+
+            help_label = QLabel("해결 방법:\n1. 프로그램을 다시 시작해보세요\n2. 네이버 API 설정을 확인하세요\n3. 모듈 파일이 정상인지 확인하세요")
+            help_label.setAlignment(Qt.AlignCenter)
+            help_label.setStyleSheet("color: #1C1B1F; font-size: 11px; margin: 20px;")
+
+            fallback_layout.addWidget(error_label)
+            fallback_layout.addWidget(detail_label)
+            fallback_layout.addWidget(help_label)
+            fallback_layout.addStretch()
+
+            self.tab_widget.addTab(fallback_widget, "🎯 순위 추적")
 
         main_layout.addWidget(self.tab_widget)
         self.statusBar().showMessage("✅ 준비됨")
@@ -2519,6 +2546,372 @@ class ModernSalesAutomationApp(QMainWindow):
         layout.addWidget(self.create_log_section())
 
         return tab_widget
+
+    def create_unified_rank_tab(self):
+        """통합 순위 추적 탭 생성"""
+        try:
+            from modules.rank_tracker.ui.instant_search_tab import InstantSearchTab
+            from modules.rank_tracker.ui.group_management_tab import GroupManagementTab
+            from modules.rank_tracker.ui.scheduler_tab import SchedulerTab
+            from modules.rank_tracker.core.unified_rank_engine import UnifiedRankEngine
+        except ImportError as e:
+            logging.error(f"순위 추적 모듈 임포트 실패: {e}")
+            # 오류 메시지를 표시하는 위젯 반환
+            error_widget = QWidget()
+            error_layout = QVBoxLayout(error_widget)
+            error_label = QLabel(f"순위 추적 시스템을 로드할 수 없습니다:\n{str(e)}")
+            error_label.setAlignment(Qt.AlignCenter)
+            error_label.setStyleSheet("color: red; font-size: 14px; padding: 40px;")
+            error_layout.addWidget(error_label)
+            return error_widget
+
+        # 스크롤 지원 메인 위젯 생성
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        main_widget = QWidget()
+        scroll_area.setWidget(main_widget)
+
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+
+        # 헤더 섹션
+        header_frame = QFrame()
+        header_frame.setStyleSheet("""
+            QFrame {
+                background-color: #FFFFFF;
+                border: 2px solid #e5e7eb;
+                border-radius: 12px;
+                padding: 16px;
+                margin-bottom: 10px;
+            }
+        """)
+
+        header_layout = QHBoxLayout(header_frame)
+
+        # 오른쪽: API 설정 (깔끔한 흰색 스타일)
+        api_inner_section = QFrame()
+        api_inner_section.setStyleSheet("""
+            QFrame {
+                background-color: #FFFFFF;
+                border: 2px solid #e5e7eb;
+                border-radius: 12px;
+                padding: 20px;
+            }
+        """)
+
+        api_inner_layout = QVBoxLayout(api_inner_section)
+        api_inner_layout.setSpacing(12)
+
+        # API 설정 제목
+        api_title = QLabel("🔧 네이버 API 설정")
+        api_title.setFont(QFont('', 14, QFont.Bold))
+        api_title.setStyleSheet("""
+            color: #1f2937;
+            margin-bottom: 8px;
+            background-color: #f9fafb;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+        """)
+        api_inner_layout.addWidget(api_title)
+
+        # API 입력 필드들을 가로로 배치
+        api_inputs_layout = QHBoxLayout()
+        api_inputs_layout.setSpacing(15)
+
+        # Client ID 섹션
+        id_section = QVBoxLayout()
+        id_label = QLabel("클라이언트 ID:")
+        id_label.setStyleSheet("""
+            color: #374151;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 4px;
+            background-color: #f3f4f6;
+            padding: 4px 8px;
+            border-radius: 4px;
+        """)
+        self.api_client_id = QLineEdit()
+        self.api_client_id.setPlaceholderText("네이버 클라이언트 ID 입력...")
+        self.api_client_id.setStyleSheet("""
+            QLineEdit {
+                background-color: #FFFFFF;
+                border: 2px solid #d1d5db;
+                border-radius: 8px;
+                padding: 12px 16px;
+                font-size: 13px;
+                min-height: 16px;
+                color: #111827;
+            }
+            QLineEdit:focus {
+                border-color: #3b82f6;
+                background-color: #FFFFFF;
+            }
+            QLineEdit:hover {
+                border-color: #9ca3af;
+            }
+        """)
+        self.api_client_id.textChanged.connect(self.on_api_credentials_changed)
+        id_section.addWidget(id_label)
+        id_section.addWidget(self.api_client_id)
+
+        # Client Secret 섹션
+        secret_section = QVBoxLayout()
+        secret_label = QLabel("클라이언트 시크릿:")
+        secret_label.setStyleSheet(id_label.styleSheet())
+        self.api_client_secret = QLineEdit()
+        self.api_client_secret.setPlaceholderText("네이버 클라이언트 시크릿 입력...")
+        self.api_client_secret.setEchoMode(QLineEdit.Password)
+        self.api_client_secret.setStyleSheet(self.api_client_id.styleSheet())
+        self.api_client_secret.textChanged.connect(self.on_api_credentials_changed)
+        secret_section.addWidget(secret_label)
+        secret_section.addWidget(self.api_client_secret)
+
+        # 저장 버튼 섹션
+        button_section = QVBoxLayout()
+        button_section.addWidget(QLabel(""))  # 빈 라벨로 정렬 맞춤
+        save_btn = QPushButton("💾 저장")
+        save_btn.clicked.connect(self.save_api_credentials)
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3b82f6;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 12px 20px;
+                font-weight: bold;
+                font-size: 13px;
+                min-height: 16px;
+                min-width: 90px;
+            }
+            QPushButton:hover {
+                background-color: #2563eb;
+            }
+            QPushButton:pressed {
+                background-color: #1d4ed8;
+            }
+        """)
+        button_section.addWidget(save_btn)
+
+        api_inputs_layout.addLayout(id_section, 2)
+        api_inputs_layout.addLayout(secret_section, 2)
+        api_inputs_layout.addLayout(button_section, 1)
+
+        api_inner_layout.addLayout(api_inputs_layout)
+
+        # API 상태 표시
+        self.api_status_label = QLabel("🔴 API 미설정")
+        self.api_status_label.setStyleSheet("""
+            color: #374151;
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 8px;
+            background-color: #f9fafb;
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+        """)
+        api_inner_layout.addWidget(self.api_status_label)
+
+        header_layout.addWidget(api_inner_section)  # API 섹션이 전체 공간을 차지
+
+        main_layout.addWidget(header_frame)
+        # 기존 설정 로드
+        self.load_api_credentials()
+
+        # 탭 위젯 생성
+        rank_tab_widget = QTabWidget()
+        rank_tab_widget.setMinimumHeight(800)  # 탭 내용이 충분히 보이도록 최소 높이 설정
+        rank_tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border: 2px solid #dbeafe;
+                border-radius: 8px;
+                background-color: #fafafa;
+            }
+            QTabBar::tab {
+                background-color: #f1f5f9;
+                color: #334155;
+                padding: 12px 20px;
+                margin-right: 2px;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                font-size: 12px;
+            }
+            QTabBar::tab:selected {
+                background-color: #2563eb;
+                color: #FFFFFF;
+                font-weight: bold;
+            }
+            QTabBar::tab:hover {
+                background-color: #e0f2fe;
+            }
+        """)
+
+        # 탭들 생성
+        try:
+            # 1. 즉시 검색 탭
+            instant_tab = InstantSearchTab()
+            rank_tab_widget.addTab(instant_tab, "🔍 즉시 검색")
+
+            # 2. 그룹 관리 탭
+            groups_tab = GroupManagementTab()
+            rank_tab_widget.addTab(groups_tab, "📁 그룹 관리")
+
+            # 3. 스케줄링 탭
+            scheduler_tab = SchedulerTab()
+            rank_tab_widget.addTab(scheduler_tab, "⏰ 스케줄링")
+
+            # API 설정이 있다면 엔진 초기화 및 공유
+            self.init_rank_engine_for_tabs(instant_tab, scheduler_tab)
+
+        except Exception as e:
+            logging.error(f"순위 추적 탭 생성 실패: {e}")
+            error_tab = QWidget()
+            error_layout = QVBoxLayout(error_tab)
+            error_label = QLabel(f"탭 생성 오류: {str(e)}")
+            error_label.setAlignment(Qt.AlignCenter)
+            error_layout.addWidget(error_label)
+            rank_tab_widget.addTab(error_tab, "❌ 오류")
+
+        main_layout.addWidget(rank_tab_widget, 1)
+
+        # 전체 위젯 최소 높이 설정으로 스크롤 가능하도록
+        main_widget.setMinimumHeight(1200)
+
+        return scroll_area
+
+    def init_rank_engine_for_tabs(self, instant_tab, scheduler_tab):
+        """순위 추적 탭들에 엔진 공유"""
+        try:
+            from modules.rank_tracker.core.unified_rank_engine import UnifiedRankEngine
+
+            # 기존 네이버 API 설정이 있는지 확인
+            client_id = None
+            client_secret = None
+
+            # 설정에서 API 정보 가져오기 시도
+            if hasattr(self, 'settings') and hasattr(self.settings, 'api'):
+                client_id = getattr(self.settings.api, 'client_id', None)
+                client_secret = getattr(self.settings.api, 'client_secret', None)
+
+            # 또는 QSettings에서 가져오기
+            if not client_id:
+                rank_settings = QSettings('NaverRankTracker', 'ApiConfig')
+                client_id = rank_settings.value('client_id', '')
+                client_secret = rank_settings.value('client_secret', '')
+
+            if client_id and client_secret:
+                engine = UnifiedRankEngine(
+                    client_id=client_id,
+                    client_secret=client_secret
+                )
+
+                # 각 탭에 엔진 전달
+                if hasattr(instant_tab, 'set_engine'):
+                    instant_tab.set_engine(engine)
+
+                if hasattr(scheduler_tab, 'set_engine'):
+                    scheduler_tab.set_engine(engine)
+
+                logging.info("순위 추적 엔진이 탭들에 성공적으로 연결됨")
+            else:
+                logging.info("네이버 API 설정이 없어 엔진 초기화 생략")
+
+        except Exception as e:
+            logging.error(f"순위 추적 엔진 초기화 실패: {e}")
+
+    def load_api_credentials(self):
+        """저장된 API 인증 정보 로드"""
+        try:
+            from PySide6.QtCore import QSettings
+            settings = QSettings('NaverRankTracker', 'ApiConfig')
+
+            client_id = settings.value('client_id', '')
+            client_secret = settings.value('client_secret', '')
+
+            self.api_client_id.setText(client_id)
+            self.api_client_secret.setText(client_secret)
+
+            # 상태 업데이트
+            if client_id and client_secret:
+                self.api_status_label.setText("🟢 API 설정 완료")
+                self.api_status_label.setStyleSheet("color: #28a745; font-size: 10px; margin-top: 4px;")
+                # 엔진 초기화
+                self.init_rank_engine_for_tabs_direct(client_id, client_secret)
+            else:
+                self.api_status_label.setText("🔴 API 미설정")
+                self.api_status_label.setStyleSheet("color: #dc3545; font-size: 10px; margin-top: 4px;")
+
+        except Exception as e:
+            logging.error(f"API 설정 로드 실패: {e}")
+
+    def save_api_credentials(self):
+        """API 인증 정보 저장"""
+        try:
+            from PySide6.QtCore import QSettings
+
+            client_id = self.api_client_id.text().strip()
+            client_secret = self.api_client_secret.text().strip()
+
+            if not client_id or not client_secret:
+                QMessageBox.warning(self, "입력 오류", "클라이언트 ID와 시크릿을 모두 입력하세요.")
+                return
+
+            # 설정 저장
+            settings = QSettings('NaverRankTracker', 'ApiConfig')
+            settings.setValue('client_id', client_id)
+            settings.setValue('client_secret', client_secret)
+
+            # 상태 업데이트
+            self.api_status_label.setText("🟢 API 설정 완료")
+            self.api_status_label.setStyleSheet("color: #28a745; font-size: 10px; margin-top: 4px;")
+
+            # 엔진 초기화
+            self.init_rank_engine_for_tabs_direct(client_id, client_secret)
+
+            QMessageBox.information(self, "성공", "네이버 API 설정이 저장되었습니다!")
+
+        except Exception as e:
+            logging.error(f"API 설정 저장 실패: {e}")
+            QMessageBox.critical(self, "오류", f"API 설정 저장에 실패했습니다:\n{str(e)}")
+
+    def on_api_credentials_changed(self):
+        """API 인증 정보 변경 시 상태 업데이트"""
+        client_id = self.api_client_id.text().strip()
+        client_secret = self.api_client_secret.text().strip()
+
+        if client_id and client_secret:
+            self.api_status_label.setText("🟡 설정 변경됨 (저장 필요)")
+            self.api_status_label.setStyleSheet("color: #ffc107; font-size: 10px; margin-top: 4px;")
+        else:
+            self.api_status_label.setText("🔴 API 미설정")
+            self.api_status_label.setStyleSheet("color: #dc3545; font-size: 10px; margin-top: 4px;")
+
+    def init_rank_engine_for_tabs_direct(self, client_id, client_secret):
+        """API 키로 직접 엔진 초기화"""
+        try:
+            from modules.rank_tracker.core.unified_rank_engine import UnifiedRankEngine
+
+            engine = UnifiedRankEngine(
+                client_id=client_id,
+                client_secret=client_secret
+            )
+
+            # 탭들에 엔진 전달 (나중에 탭이 생성되면)
+            if hasattr(self, 'instant_tab') and hasattr(self.instant_tab, 'set_engine'):
+                self.instant_tab.set_engine(engine)
+
+            if hasattr(self, 'scheduler_tab') and hasattr(self.scheduler_tab, 'set_engine'):
+                self.scheduler_tab.set_engine(engine)
+
+            logging.info("순위 추적 엔진이 탭들에 성공적으로 연결됨")
+
+        except Exception as e:
+            logging.error(f"순위 추적 엔진 초기화 실패: {e}")
 
     def update_workflow_step(self, step: WorkflowStep):
         """Context7 모범 사례: 워크플로우 단계 업데이트"""

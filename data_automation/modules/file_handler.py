@@ -573,20 +573,67 @@ def finalize_all_processing():
         return
     
     # 원본 파일이나 개별 리포트가 있는지 확인
-    source_files = [f for f in all_xlsx_files if '통합_리포트' not in f]
+    source_files = [f for f in all_xlsx_files if '통합_리포트' not in f and '마진정보' not in f]
     report_files = [f for f in all_xlsx_files if '통합_리포트' in f]
-    
+
     logging.info(f"📋 원본 파일들 ({len(source_files)}개): {source_files}")
     logging.info(f"📊 리포트 파일들 ({len(report_files)}개): {report_files}")
-    
+
     if not source_files and not report_files:
         logging.info("ℹ️ 정리할 파일이 없습니다.")
         return
+
+    # 0단계: 원본 파일들이 있는데 개별 리포트가 없는 경우 개별 리포트 생성 (누락되었던 핵심 단계!)
+    if source_files and not report_files:
+        logging.info(f"🔄 0단계: 개별 리포트 생성 중... (원본 파일 {len(source_files)}개 처리)")
+        try:
+            # 현재 설정된 엔진에 따라 적절한 generator 사용 (작업폴더 기능과 동일한 로직)
+            current_engine = get_current_engine()
+            logging.info(f"🚀 데이터 처리 엔진: {current_engine}")
+
+            if current_engine == "Polars":
+                try:
+                    from . import report_generator_polars
+                    processed_groups = report_generator_polars.generate_individual_reports_polars()
+                    logging.info(f"⚡ Polars 엔진으로 고성능 처리 완료")
+                except ImportError as e:
+                    logging.warning(f"⚠️ Polars 모듈 로드 실패, Pandas로 폴백: {e}")
+                    from . import report_generator
+                    processed_groups = report_generator.generate_individual_reports()
+                except Exception as e:
+                    logging.warning(f"⚠️ Polars 처리 실패, Pandas로 폴백: {e}")
+                    from . import report_generator
+                    processed_groups = report_generator.generate_individual_reports()
+            else:
+                from . import report_generator
+                processed_groups = report_generator.generate_individual_reports()
+                logging.info(f"📊 Pandas 엔진으로 표준 처리 완료")
+
+            if processed_groups:
+                logging.info(f"✅ 0단계: 개별 리포트 생성 완료 ({processed_groups}개 그룹 처리)")
+
+                # 생성된 개별 리포트들 확인하여 report_files 업데이트
+                updated_files = os.listdir(processing_dir)
+                report_files = [f for f in updated_files if f.endswith('.xlsx') and '통합_리포트' in f and not f.startswith('~')]
+                logging.info(f"📊 새로 생성된 개별 리포트들 ({len(report_files)}개): {report_files}")
+            else:
+                logging.error("❌ 0단계: 개별 리포트 생성 실패 - 처리된 그룹이 없음")
+
+        except Exception as e:
+            logging.error(f"❌ 0단계 실패: 개별 리포트 생성 중 오류: {e}")
+            import traceback
+            logging.error(f"📚 스택 트레이스: {traceback.format_exc()}")
+    else:
+        if source_files and report_files:
+            logging.info("ℹ️ 0단계 스킵: 개별 리포트가 이미 존재합니다.")
+        else:
+            logging.info("ℹ️ 0단계 스킵: 처리할 원본 파일이 없습니다.")
     
     # 1단계: 전체 통합 리포트 생성 (개별 리포트가 있는 경우에만)
     if report_files:
         logging.info(f"🔄 1단계: 전체 통합 리포트 생성 중... (개별 리포트 {len(report_files)}개 통합)")
         try:
+            from . import report_generator
             report_generator.consolidate_daily_reports()
             logging.info("✅ 1단계: 전체 통합 리포트 생성 완료")
             
