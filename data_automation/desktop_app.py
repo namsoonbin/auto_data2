@@ -2720,8 +2720,6 @@ class ModernSalesAutomationApp(QMainWindow):
         header_layout.addWidget(api_inner_section)  # API 섹션이 전체 공간을 차지
 
         main_layout.addWidget(header_frame)
-        # 기존 설정 로드
-        self.load_api_credentials()
 
         # 탭 위젯 생성
         rank_tab_widget = QTabWidget()
@@ -2754,19 +2752,19 @@ class ModernSalesAutomationApp(QMainWindow):
         # 탭들 생성
         try:
             # 1. 즉시 검색 탭
-            instant_tab = InstantSearchTab()
-            rank_tab_widget.addTab(instant_tab, "🔍 즉시 검색")
+            self.instant_tab = InstantSearchTab()
+            rank_tab_widget.addTab(self.instant_tab, "🔍 즉시 검색")
 
             # 2. 그룹 관리 탭
-            groups_tab = GroupManagementTab()
-            rank_tab_widget.addTab(groups_tab, "📁 그룹 관리")
+            self.groups_tab = GroupManagementTab()
+            rank_tab_widget.addTab(self.groups_tab, "📁 그룹 관리")
 
             # 3. 스케줄링 탭
-            scheduler_tab = SchedulerTab()
-            rank_tab_widget.addTab(scheduler_tab, "⏰ 스케줄링")
+            self.scheduler_tab = SchedulerTab()
+            rank_tab_widget.addTab(self.scheduler_tab, "⏰ 스케줄링")
 
             # API 설정이 있다면 엔진 초기화 및 공유
-            self.init_rank_engine_for_tabs(instant_tab, scheduler_tab)
+            self.init_rank_engine_for_tabs(self.instant_tab, self.groups_tab, self.scheduler_tab)
 
         except Exception as e:
             logging.error(f"순위 추적 탭 생성 실패: {e}")
@@ -2782,9 +2780,12 @@ class ModernSalesAutomationApp(QMainWindow):
         # 전체 위젯 최소 높이 설정으로 스크롤 가능하도록
         main_widget.setMinimumHeight(1200)
 
+        # ✅ Phase 10: 탭 생성 후 API 설정 로드 및 엔진 초기화
+        self.load_api_credentials()
+
         return scroll_area
 
-    def init_rank_engine_for_tabs(self, instant_tab, scheduler_tab):
+    def init_rank_engine_for_tabs(self, instant_tab, groups_tab, scheduler_tab):
         """순위 추적 탭들에 엔진 공유"""
         try:
             from modules.rank_tracker.core.unified_rank_engine import UnifiedRankEngine
@@ -2813,9 +2814,15 @@ class ModernSalesAutomationApp(QMainWindow):
                 # 각 탭에 엔진 전달
                 if hasattr(instant_tab, 'set_engine'):
                     instant_tab.set_engine(engine)
+                    logging.info("✅ 즉시 검색 탭에 엔진 전달 완료")
+
+                if hasattr(groups_tab, 'set_engine'):
+                    groups_tab.set_engine(engine)
+                    logging.info("✅ 그룹 관리 탭에 엔진 전달 완료")
 
                 if hasattr(scheduler_tab, 'set_engine'):
                     scheduler_tab.set_engine(engine)
+                    logging.info("✅ 스케줄링 탭에 엔진 전달 완료")
 
                 logging.info("순위 추적 엔진이 탭들에 성공적으로 연결됨")
             else:
@@ -2904,9 +2911,15 @@ class ModernSalesAutomationApp(QMainWindow):
             # 탭들에 엔진 전달 (나중에 탭이 생성되면)
             if hasattr(self, 'instant_tab') and hasattr(self.instant_tab, 'set_engine'):
                 self.instant_tab.set_engine(engine)
+                logging.info("✅ 즉시 검색 탭에 엔진 전달 완료")
+
+            if hasattr(self, 'groups_tab') and hasattr(self.groups_tab, 'set_engine'):
+                self.groups_tab.set_engine(engine)
+                logging.info("✅ 그룹 관리 탭에 엔진 전달 완료")
 
             if hasattr(self, 'scheduler_tab') and hasattr(self.scheduler_tab, 'set_engine'):
                 self.scheduler_tab.set_engine(engine)
+                logging.info("✅ 스케줄링 탭에 엔진 전달 완료")
 
             logging.info("순위 추적 엔진이 탭들에 성공적으로 연결됨")
 
