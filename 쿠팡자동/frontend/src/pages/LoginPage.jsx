@@ -219,7 +219,7 @@ function LoginPage() {
 
           {/* 회원가입 폼 */}
           {tabValue === 1 && (
-            <form onSubmit={handleRegisterSubmit} className="space-y-4">
+            <form onSubmit={handleRegisterSubmit} className="space-y-6">
               {/* 이메일 */}
               <div className="space-y-2">
                 <Label htmlFor="register-email" className="text-slate-700">
@@ -372,7 +372,7 @@ function LoginPage() {
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white h-10 mt-2"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white h-10"
               >
                 {loading ? '회원가입 중...' : '회원가입'}
               </Button>
