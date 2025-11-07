@@ -97,6 +97,7 @@ class DailyMetric(BaseModel):
     total_sales: float
     total_profit: float
     ad_cost: float
+    total_quantity: int
     margin_rate: float
 
 

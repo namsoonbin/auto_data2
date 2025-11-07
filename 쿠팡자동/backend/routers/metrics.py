@@ -64,12 +64,14 @@ async def get_metrics(
                 'total_sales': 0.0,
                 'total_profit': 0.0,
                 'ad_cost': 0.0,
+                'total_quantity': 0,
                 'margin_rate': 0.0
             }
 
         daily_metrics[date_key]['total_sales'] += record.sales_amount
         daily_metrics[date_key]['total_profit'] += record.net_profit
         daily_metrics[date_key]['ad_cost'] += record.ad_cost
+        daily_metrics[date_key]['total_quantity'] += record.sales_quantity
 
     # Calculate margin rate for each day
     for metrics in daily_metrics.values():
@@ -402,12 +404,14 @@ async def get_product_trend(
                 'date': date_key,
                 'total_sales': 0.0,
                 'total_profit': 0.0,
-                'ad_cost': 0.0
+                'ad_cost': 0.0,
+                'total_quantity': 0
             }
 
         daily_metrics[date_key]['total_sales'] += record.sales_amount
         daily_metrics[date_key]['total_profit'] += record.net_profit
         daily_metrics[date_key]['ad_cost'] += record.ad_cost
+        daily_metrics[date_key]['total_quantity'] += record.sales_quantity
 
     # Sort by date
     daily_trend = sorted(daily_metrics.values(), key=lambda x: x['date'])
