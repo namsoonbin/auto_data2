@@ -252,11 +252,25 @@ class ProductMaster(Base):
 
 async def init_db():
     """Create database tables"""
+    print("=" * 50)
+    print("Starting database initialization...")
+    print(f"Database URL: {DATABASE_URL[:50]}...")  # 앞부분만 출력 (보안)
+
     # Import all models to register them with Base.metadata
     from models.auth import User, Tenant, TenantMembership
     from models.audit import AuditLog
 
-    Base.metadata.create_all(bind=engine)
+    print(f"Registered tables: {list(Base.metadata.tables.keys())}")
+    print("Creating tables...")
+
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("✅ Tables created successfully!")
+        print("=" * 50)
+    except Exception as e:
+        print(f"❌ Error creating tables: {e}")
+        print("=" * 50)
+        raise
 
 
 async def close_db():
