@@ -26,6 +26,13 @@ else:
     # 프로덕션 환경: PostgreSQL 사용
     # Render/Supabase에서 제공하는 DATABASE_URL 사용
 
+    # psycopg3 드라이버 사용 (psycopg2 대신)
+    # postgresql:// -> postgresql+psycopg://
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+    elif DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+
     # SQLAlchemy engine (PostgreSQL)
     engine = create_engine(
         DATABASE_URL,
