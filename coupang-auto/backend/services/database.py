@@ -252,6 +252,10 @@ class ProductMaster(Base):
 
 async def init_db():
     """Create database tables"""
+    # Import all models to register them with Base.metadata
+    from models.auth import User, Tenant, TenantMembership
+    from models.audit import AuditLog
+
     Base.metadata.create_all(bind=engine)
 
 
