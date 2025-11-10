@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -23,16 +24,24 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# CORS 설정
+# 환경변수 FRONTEND_URL이 있으면 사용, 없으면 로컬 개발 환경
+allowed_origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3002",
+    "http://localhost:3003",
+    "http://localhost:5173",
+]
+
+# 프로덕션 프론트엔드 URL 추가
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url:
+    allowed_origins.append(frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://localhost:3002",
-        "http://localhost:3003",
-        "http://localhost:5173",
-        "https://*.vercel.app",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -19,7 +19,8 @@ from schemas.auth import (
     ProfileUpdate,
     ProfileResponse,
     PasswordChange,
-    TenantUpdate
+    TenantUpdate,
+    AccountDelete
 )
 from auth.jwt import create_access_token, create_refresh_token, verify_token
 from auth.password import hash_password, verify_password
@@ -420,4 +421,88 @@ async def update_tenant(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"테넌트 정보 수정 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+@router.delete("/account")
+async def delete_account(
+    delete_data: AccountDelete,
+    current_user: User = Depends(get_current_user),
+    current_tenant: Tenant = Depends(get_current_tenant),
+    db: Session = Depends(get_db)
+):
+    """
+    계정 삭제
+
+    - 비밀번호를 확인한 후 계정을 삭제합니다
+    - Owner인 경우: 테넌트와 모든 관련 데이터가 함께 삭제됩니다
+    - 일반 사용자인 경우: 해당 사용자 계정만 삭제됩니다
+
+    경고: 이 작업은 되돌릴 수 없습니다!
+    """
+    # 비밀번호 확인
+    if not verify_password(delete_data.password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="비밀번호가 올바르지 않습니다"
+        )
+
+    try:
+        # Owner인 경우 테넌트의 모든 데이터 삭제
+        if current_user.role == 'owner':
+            # 1. IntegratedRecord 삭제
+            from services.database import IntegratedRecord, ProductMargin
+            db.query(IntegratedRecord).filter(
+                IntegratedRecord.tenant_id == current_tenant.id
+            ).delete()
+
+            # 2. ProductMargin 삭제
+            db.query(ProductMargin).filter(
+                ProductMargin.tenant_id == current_tenant.id
+            ).delete()
+
+            # 3. 다른 멤버들의 멤버십 삭제
+            db.query(TenantMembership).filter(
+                TenantMembership.tenant_id == current_tenant.id
+            ).delete()
+
+            # 4. 테넌트의 다른 사용자들 삭제
+            db.query(User).filter(
+                User.tenant_id == current_tenant.id,
+                User.id != current_user.id
+            ).delete()
+
+            # 5. 현재 사용자 삭제
+            db.delete(current_user)
+
+            # 6. 테넌트 삭제
+            db.delete(current_tenant)
+
+            db.commit()
+            return {
+                "message": "계정과 테넌트가 성공적으로 삭제되었습니다",
+                "deleted_type": "tenant_and_account"
+            }
+
+        else:
+            # 일반 사용자인 경우 본인 계정만 삭제
+            # 1. 멤버십 삭제
+            db.query(TenantMembership).filter(
+                TenantMembership.user_id == current_user.id
+            ).delete()
+
+            # 2. 사용자 삭제
+            db.delete(current_user)
+
+            db.commit()
+            return {
+                "message": "계정이 성공적으로 삭제되었습니다",
+                "deleted_type": "account_only"
+            }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"계정 삭제 중 오류가 발생했습니다: {str(e)}"
         )

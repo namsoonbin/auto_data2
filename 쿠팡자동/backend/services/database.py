@@ -6,17 +6,34 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import os
 
-# Database path setup
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
-os.makedirs(DB_PATH, exist_ok=True)
-DATABASE_URL = f"sqlite:///{os.path.join(DB_PATH, 'coupang_integrated.db')}"
+# Database URL setup
+# 환경변수에서 DATABASE_URL을 가져오거나, 로컬에서는 SQLite 사용
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# SQLAlchemy engine
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    echo=True
-)
+if DATABASE_URL is None:
+    # 로컬 개발 환경: SQLite 사용
+    DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+    os.makedirs(DB_PATH, exist_ok=True)
+    DATABASE_URL = f"sqlite:///{os.path.join(DB_PATH, 'coupang_integrated.db')}"
+
+    # SQLAlchemy engine (SQLite)
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        echo=True
+    )
+else:
+    # 프로덕션 환경: PostgreSQL 사용
+    # Render/Supabase에서 제공하는 DATABASE_URL 사용
+
+    # SQLAlchemy engine (PostgreSQL)
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,  # 연결 확인
+        pool_size=5,
+        max_overflow=10,
+        echo=True
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

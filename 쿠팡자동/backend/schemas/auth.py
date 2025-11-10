@@ -100,3 +100,8 @@ class TenantUpdate(BaseModel):
     """테넌트 수정 스키마"""
     name: str = Field(..., description="쇼핑몰/조직 이름")
     # slug는 변경 불가 (URL에 영향을 주므로)
+
+
+class AccountDelete(BaseModel):
+    """계정 삭제 스키마"""
+    password: str = Field(..., description="비밀번호 확인")
