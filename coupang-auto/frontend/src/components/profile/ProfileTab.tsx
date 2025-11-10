@@ -8,7 +8,7 @@ import { Mail, User, Calendar, Shield, Activity } from 'lucide-react';
 import axios from 'axios';
 import { User as UserType } from '../../types';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 interface ProfileTabProps {
   onSuccess?: (message: string) => void;

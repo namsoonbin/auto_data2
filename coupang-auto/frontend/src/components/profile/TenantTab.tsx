@@ -10,7 +10,7 @@ import axios from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { Tenant } from '../../types';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 interface TenantTabProps {
   onSuccess?: (message: string) => void;

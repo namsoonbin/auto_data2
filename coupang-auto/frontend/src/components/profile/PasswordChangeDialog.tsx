@@ -13,7 +13,7 @@ import { Button } from '../ui/button';
 import { Eye, EyeOff, Lock } from 'lucide-react';
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 interface PasswordChangeDialogProps {
   open: boolean;

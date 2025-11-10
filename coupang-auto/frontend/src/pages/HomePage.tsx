@@ -20,6 +20,8 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import axios from 'axios';
 
+const API_BASE_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api`;
+
 interface UploadResult {
   status: 'success' | 'error';
   message: string;
@@ -144,7 +146,7 @@ function HomePage() {
       formData.append('data_date', format(dataDate, 'yyyy-MM-dd'));
 
       const response = await axios.post<UploadResult>(
-        'http://localhost:8000/api/upload/integrated',
+        `${API_BASE_URL}/upload/integrated`,
         formData,
         {
           headers: {
