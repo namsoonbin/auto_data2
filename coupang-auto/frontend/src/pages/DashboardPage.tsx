@@ -77,9 +77,9 @@ interface RoasData {
 
 interface DailyTrend {
   date: string;
-  sales: number;
+  total_sales: number;
   ad_cost: number;
-  net_profit: number;
+  total_profit: number;
   total_quantity: number;
 }
 
