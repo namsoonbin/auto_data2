@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Button } from './components/ui/button';
 import {
@@ -11,6 +11,8 @@ import {
   LogOut,
   Settings,
   Users,
+  Menu,
+  X,
 } from 'lucide-react';
 import HomePage from './pages/HomePage';
 import DashboardPage from './pages/DashboardPage';
@@ -46,9 +48,14 @@ const menuItems: MenuItem[] = [
 function AppContent() {
   const location = useLocation();
   const { user, tenant, logout, isAuthenticated } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
+  };
+
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
   };
 
   // 로그인 페이지에서는 사이드바를 표시하지 않음
@@ -59,14 +66,23 @@ function AppContent() {
       {/* AppBar */}
       {showSidebar && (
         <header className="fixed top-0 left-0 right-0 h-16 bg-blue-600 text-white shadow-lg z-50">
-          <div className="flex items-center justify-between h-full px-6">
-            <h1 className="text-xl font-semibold">쿠팡 판매 데이터 자동화</h1>
-            <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between h-full px-4 md:px-6">
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 rounded-lg hover:bg-blue-700"
+            >
+              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+
+            <h1 className="text-lg md:text-xl font-semibold">쿠팡 판매 데이터 자동화</h1>
+
+            <div className="flex items-center gap-2 md:gap-4">
               {tenant && (
-                <span className="text-sm font-medium">{tenant.name}</span>
+                <span className="hidden sm:inline text-sm font-medium">{tenant.name}</span>
               )}
               {user && (
-                <span className="text-sm">
+                <span className="hidden md:inline text-sm">
                   {user.full_name} ({user.role})
                 </span>
               )}
@@ -76,18 +92,29 @@ function AppContent() {
                 onClick={handleLogout}
                 className="text-white hover:bg-blue-700"
               >
-                <LogOut className="h-4 w-4 mr-2" />
-                로그아웃
+                <LogOut className="h-4 w-4 md:mr-2" />
+                <span className="hidden md:inline">로그아웃</span>
               </Button>
             </div>
           </div>
         </header>
       )}
 
+      {/* Mobile Sidebar Overlay */}
+      {showSidebar && mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+          onClick={closeMobileMenu}
+        />
+      )}
+
       {/* Sidebar */}
       {showSidebar && (
         <aside
-          className="fixed left-0 top-16 bottom-0 bg-white border-r border-gray-200 overflow-y-auto"
+          className={`
+            fixed left-0 top-16 bottom-0 bg-white border-r border-gray-200 overflow-y-auto z-40 transition-transform duration-300
+            ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+          `}
           style={{ width: drawerWidth }}
         >
           <nav className="p-2">
@@ -98,6 +125,7 @@ function AppContent() {
                   <li key={item.text}>
                     <Link
                       to={item.path}
+                      onClick={closeMobileMenu}
                       className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                         isActive
                           ? 'bg-blue-50 text-blue-600 font-medium'
@@ -119,8 +147,7 @@ function AppContent() {
 
       {/* Main Content */}
       <main
-        className={`flex-1 ${showSidebar ? 'pt-16' : ''}`}
-        style={{ marginLeft: showSidebar ? drawerWidth : 0 }}
+        className={`flex-1 ${showSidebar ? 'pt-16' : ''} ${showSidebar ? 'md:ml-60' : ''}`}
       >
         <div className={showSidebar ? '' : 'min-h-screen'}>
           <Routes>
