@@ -488,13 +488,14 @@ function DashboardPage() {
                 <div className="flex justify-between items-center">
                   <CardTitle>상품별 성과 상세</CardTitle>
                   <div className="flex items-center gap-2">
-                    <Label htmlFor="groupby-switch" className="text-sm">
+                    <Label htmlFor="groupby-switch" className="text-sm font-medium">
                       {groupBy === 'product' ? '상품별 보기' : '옵션별 보기'}
                     </Label>
                     <Switch
                       id="groupby-switch"
                       checked={groupBy === 'product'}
                       onCheckedChange={handleGroupByChange}
+                      className="data-[state=unchecked]:bg-gray-300"
                     />
                   </div>
                 </div>
