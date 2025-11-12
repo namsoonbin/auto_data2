@@ -525,10 +525,7 @@ function DashboardPage() {
                           <TableCell>
                             <div className="max-w-full">
                               <div className="flex items-center gap-2 mb-1">
-                                <span
-                                  className="font-medium truncate block max-w-[200px]"
-                                  title={product.product_name}
-                                >
+                                <span className="font-medium">
                                   {product.product_name}
                                 </span>
                                 {index < 3 && (
@@ -539,7 +536,7 @@ function DashboardPage() {
                               </div>
                               {product.option_name && (
                                 <p
-                                  className="text-xs text-gray-500 truncate"
+                                  className="text-xs text-gray-500 truncate max-w-[250px]"
                                   title={product.option_name}
                                 >
                                   {product.option_name}
