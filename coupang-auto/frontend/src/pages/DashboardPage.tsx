@@ -158,6 +158,20 @@ function DashboardPage() {
   const [productChartData, setProductChartData] = useState<DailyTrend[] | null>(null);
   const [loadingProductChart, setLoadingProductChart] = useState(false);
 
+  // Responsive calendar
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   useEffect(() => {
     fetchSummary();
 
@@ -374,8 +388,8 @@ function DashboardPage() {
                   dateFormat="yyyy-MM-dd"
                   placeholderText="기간을 선택하세요"
                   isClearable={true}
-                  monthsShown={2}
-                  popperPlacement="bottom-start"
+                  monthsShown={isMobile ? 1 : 2}
+                  popperPlacement={isMobile ? "bottom" : "bottom-start"}
                   shouldCloseOnSelect={false}
                   locale={ko}
                   renderCustomHeader={renderCustomHeader}
