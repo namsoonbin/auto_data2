@@ -48,7 +48,7 @@ const API_BASE_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}
 
 // Interfaces
 interface Margin {
-  option_id: string;
+  option_id: number;
   product_name: string;
   option_name?: string;
   cost_price: number;
@@ -63,7 +63,7 @@ interface Margin {
 }
 
 interface UnmatchedProduct {
-  option_id: string;
+  option_id: number;
   product_name: string;
   option_name?: string;
   sales_amount: number;
@@ -92,7 +92,7 @@ interface RecalcResult {
 }
 
 interface MarginFormData {
-  option_id: string;
+  option_id: number | string;
   product_name: string;
   option_name: string;
   cost_price: number;
@@ -174,7 +174,7 @@ function MarginManagementPage() {
 
   // Form states
   const [formData, setFormData] = useState<MarginFormData>({
-    option_id: '',
+    option_id: 0,
     product_name: '',
     option_name: '',
     cost_price: 0,
@@ -257,7 +257,7 @@ function MarginManagementPage() {
     } else {
       // Empty form for new margin
       setFormData({
-        option_id: '',
+        option_id: 0,
         product_name: '',
         option_name: '',
         cost_price: 0,
@@ -304,11 +304,19 @@ function MarginManagementPage() {
     }
 
     try {
+      // Convert option_id to number before sending
+      const payload = {
+        ...formData,
+        option_id: typeof formData.option_id === 'string'
+          ? parseInt(formData.option_id, 10)
+          : formData.option_id
+      };
+
       if (dialogMode === 'create') {
-        await axios.post(`${API_BASE_URL}/margins`, formData);
+        await axios.post(`${API_BASE_URL}/margins`, payload);
         setSuccess('마진 데이터가 성공적으로 추가되었습니다');
       } else {
-        await axios.put(`${API_BASE_URL}/margins/${currentMargin?.option_id}`, formData);
+        await axios.put(`${API_BASE_URL}/margins/${currentMargin?.option_id}`, payload);
         setSuccess('마진 데이터가 성공적으로 수정되었습니다');
       }
 
@@ -883,8 +891,9 @@ function MarginManagementPage() {
                 <Label htmlFor="option_id">옵션 ID *</Label>
                 <Input
                   id="option_id"
+                  type="number"
                   value={formData.option_id}
-                  onChange={(e) => handleFormChange('option_id', e.target.value)}
+                  onChange={(e) => handleFormChange('option_id', e.target.value ? parseInt(e.target.value, 10) : '')}
                   disabled={dialogMode === 'edit'}
                 />
               </div>
