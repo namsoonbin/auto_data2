@@ -641,7 +641,7 @@ function DashboardPage() {
 
         {/* Product Chart Modal */}
         <Dialog open={productChartOpen} onOpenChange={setProductChartOpen}>
-          <DialogContent className="max-w-6xl">
+          <DialogContent className="max-w-6xl sm:max-w-6xl">
             <DialogHeader>
               <DialogTitle>
                 {selectedProduct?.product_name}
