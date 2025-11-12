@@ -505,14 +505,14 @@ function DashboardPage() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-gray-100">
-                        <TableHead className="w-[35%]">상품명</TableHead>
-                        <TableHead className="text-right w-[12%]">매출</TableHead>
-                        <TableHead className="text-right w-[11%]">순이익</TableHead>
-                        <TableHead className="text-right w-[11%]">광고비</TableHead>
-                        <TableHead className="text-right w-[8%]">판매량</TableHead>
-                        <TableHead className="text-right w-[8%]">마진율</TableHead>
-                        <TableHead className="text-right w-[7%]">광고비율</TableHead>
-                        <TableHead className="text-right w-[8%]">이윤율</TableHead>
+                        <TableHead className="w-[25%]">상품명</TableHead>
+                        <TableHead className="text-right w-[13%]">매출</TableHead>
+                        <TableHead className="text-right w-[12%]">순이익</TableHead>
+                        <TableHead className="text-right w-[12%]">광고비</TableHead>
+                        <TableHead className="text-right w-[10%]">판매량</TableHead>
+                        <TableHead className="text-right w-[9%]">마진율</TableHead>
+                        <TableHead className="text-right w-[9%]">광고비율</TableHead>
+                        <TableHead className="text-right w-[10%]">이윤율</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -523,17 +523,27 @@ function DashboardPage() {
                           className="cursor-pointer hover:bg-gray-100 transition-colors"
                         >
                           <TableCell>
-                            <div>
+                            <div className="max-w-full">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium">{product.product_name}</span>
+                                <span
+                                  className="font-medium truncate block max-w-[200px]"
+                                  title={product.product_name}
+                                >
+                                  {product.product_name}
+                                </span>
                                 {index < 3 && (
-                                  <Badge variant="default" className="bg-blue-500">
+                                  <Badge variant="default" className="bg-blue-500 shrink-0">
                                     #{index + 1}
                                   </Badge>
                                 )}
                               </div>
                               {product.option_name && (
-                                <p className="text-xs text-gray-500">{product.option_name}</p>
+                                <p
+                                  className="text-xs text-gray-500 truncate"
+                                  title={product.option_name}
+                                >
+                                  {product.option_name}
+                                </p>
                               )}
                             </div>
                           </TableCell>
