@@ -536,7 +536,7 @@ function DashboardPage() {
                               </div>
                               {product.option_name && (
                                 <p
-                                  className="text-xs text-gray-500 truncate max-w-[250px]"
+                                  className="text-xs text-gray-500 truncate max-w-[350px]"
                                   title={product.option_name}
                                 >
                                   {product.option_name}
