@@ -39,7 +39,10 @@ else:
         pool_pre_ping=True,  # 연결 확인
         pool_size=5,
         max_overflow=10,
-        echo=True
+        echo=True,
+        connect_args={
+            "prepared_statement_cache_size": 0  # Disable prepared statement cache to avoid conflicts
+        }
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
