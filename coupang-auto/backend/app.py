@@ -32,11 +32,12 @@ allowed_origins = [
     "http://localhost:3002",
     "http://localhost:3003",
     "http://localhost:5173",
+    "https://clodel.vercel.app",  # Vercel 프로덕션 URL
 ]
 
-# 프로덕션 프론트엔드 URL 추가
+# 프로덕션 프론트엔드 URL 추가 (환경변수)
 frontend_url = os.getenv("FRONTEND_URL")
-if frontend_url:
+if frontend_url and frontend_url not in allowed_origins:
     allowed_origins.append(frontend_url)
 
 # CORS 설정 디버깅
