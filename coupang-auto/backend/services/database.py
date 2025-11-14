@@ -40,8 +40,9 @@ else:
         pool_size=5,
         max_overflow=10,
         echo=True,
+        pool_recycle=3600,  # Recycle connections after 1 hour to avoid stale connections
         connect_args={
-            "prepared_statement_cache_size": 0  # Disable prepared statement cache to avoid conflicts
+            "prepare_threshold": 0  # Disable prepared statements (psycopg3 option)
         }
     )
 
