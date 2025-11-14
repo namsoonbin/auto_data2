@@ -33,6 +33,13 @@ else:
     elif DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
 
+    # Disable prepared statements to avoid "prepared statement already exists" error
+    # This can happen with connection pooling in production environments
+    if "?" in DATABASE_URL:
+        DATABASE_URL += "&prepared=false"
+    else:
+        DATABASE_URL += "?prepared=false"
+
     # SQLAlchemy engine (PostgreSQL)
     engine = create_engine(
         DATABASE_URL,
@@ -42,7 +49,8 @@ else:
         echo=True,
         pool_recycle=3600,  # Recycle connections after 1 hour to avoid stale connections
         connect_args={
-            "prepare_threshold": 0  # Disable prepared statements (psycopg3 option)
+            "prepare_threshold": 0,  # Disable prepared statements (psycopg3 option)
+            "autocommit": False  # Explicit autocommit setting
         }
     )
 
