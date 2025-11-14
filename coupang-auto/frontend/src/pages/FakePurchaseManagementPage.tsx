@@ -634,8 +634,7 @@ const FakePurchaseManagementPage: React.FC = () => {
                   </TableHead>
                   <TableHead>날짜</TableHead>
                   <TableHead>옵션ID</TableHead>
-                  <TableHead>상품명</TableHead>
-                  <TableHead>옵션명</TableHead>
+                  <TableHead>상품정보</TableHead>
                   <TableHead className="text-right">수량</TableHead>
                   <TableHead className="text-right">단가</TableHead>
                   <TableHead className="text-right">단위비용</TableHead>
@@ -654,8 +653,16 @@ const FakePurchaseManagementPage: React.FC = () => {
                     </TableCell>
                     <TableCell>{fp.date}</TableCell>
                     <TableCell>{fp.option_id}</TableCell>
-                    <TableCell>{fp.product_name}</TableCell>
-                    <TableCell>{fp.option_name || '-'}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        <div className="font-medium">{fp.product_name}</div>
+                        {fp.option_name && (
+                          <div className="text-sm text-muted-foreground">
+                            {fp.option_name}
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">{fp.quantity}</TableCell>
                     <TableCell className="text-right">
                       {fp.unit_price.toLocaleString()}원
