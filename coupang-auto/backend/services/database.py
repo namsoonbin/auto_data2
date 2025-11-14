@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from sqlalchemy import create_engine, Column, Integer, String, Float, Date, DateTime, Boolean, BigInteger, Index, UniqueConstraint, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, Date, DateTime, Boolean, BigInteger, Index, UniqueConstraint, ForeignKey, event
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -33,13 +33,6 @@ else:
     elif DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
 
-    # Disable prepared statements to avoid "prepared statement already exists" error
-    # This can happen with connection pooling in production environments
-    if "?" in DATABASE_URL:
-        DATABASE_URL += "&prepared=false"
-    else:
-        DATABASE_URL += "?prepared=false"
-
     # SQLAlchemy engine (PostgreSQL)
     engine = create_engine(
         DATABASE_URL,
@@ -48,11 +41,14 @@ else:
         max_overflow=10,
         echo=True,
         pool_recycle=3600,  # Recycle connections after 1 hour to avoid stale connections
-        connect_args={
-            "prepare_threshold": 0,  # Disable prepared statements (psycopg3 option)
-            "autocommit": False  # Explicit autocommit setting
-        }
     )
+
+    # Disable prepared statements for Supabase pooler (transaction mode)
+    # Supabase pooler uses PgBouncer in transaction mode, which is incompatible with prepared statements
+    # Setting prepare_threshold to None disables prepared statements completely
+    @event.listens_for(engine, "connect")
+    def receive_connect(dbapi_conn, connection_record):
+        dbapi_conn.prepare_threshold = None
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
