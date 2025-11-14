@@ -201,6 +201,58 @@ class UploadHistory(Base):
     error_message = Column(String, nullable=True)
 
 
+# Fake Purchase Model
+
+class FakePurchase(Base):
+    """가구매 관리 테이블 - 가짜 구매 데이터 추적"""
+    __tablename__ = "fake_purchases"
+    __table_args__ = (
+        Index('idx_fake_tenant_option_date', 'tenant_id', 'option_id', 'date'),
+        UniqueConstraint('tenant_id', 'option_id', 'date', name='uix_fake_tenant_option_date'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey('tenants.id'), nullable=False, index=True)
+
+    # 상품 정보
+    option_id = Column(BigInteger, nullable=False, index=True)
+    product_name = Column(String, nullable=False, index=True)
+    option_name = Column(String, nullable=True)
+    date = Column(Date, nullable=False, index=True)
+
+    # 가구매 정보
+    quantity = Column(Integer, nullable=False, default=0)  # 가구매 개수
+    unit_price = Column(Float, nullable=True, default=0.0)  # 상품 단가 (참고용)
+
+    # 계산된 비용
+    # 가구매 비용 = (상품가격 × 20.5%) + 4500원
+    calculated_cost = Column(Float, nullable=True, default=0.0)  # 단위당 가구매 비용
+    total_cost = Column(Float, nullable=True, default=0.0)  # 총 가구매 비용 (calculated_cost × quantity)
+
+    # 메모
+    notes = Column(String, nullable=True)
+
+    # 메타데이터
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+    created_by = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True)
+
+    def calculate_fake_purchase_cost(self):
+        """가구매 비용 계산
+
+        Formula:
+        - 단위당 비용 = (상품가격 × 12%) + 4500원
+        - 총 비용 = 단위당 비용 × 가구매 개수
+        """
+        if self.unit_price and self.quantity:
+            # 수수료 12% + 고정비용 4500원
+            self.calculated_cost = (self.unit_price * 0.12) + 4500
+            self.total_cost = self.calculated_cost * self.quantity
+        else:
+            self.calculated_cost = 0
+            self.total_cost = 0
+
+
 # Backup: Keep old tables for reference (optional)
 
 class SalesRecord(Base):
@@ -272,10 +324,10 @@ async def init_db():
 
     try:
         Base.metadata.create_all(bind=engine)
-        print("✅ Tables created successfully!")
+        print("Tables created successfully!")
         print("=" * 50)
     except Exception as e:
-        print(f"❌ Error creating tables: {e}")
+        print(f"Error creating tables: {e}")
         print("=" * 50)
         raise
 

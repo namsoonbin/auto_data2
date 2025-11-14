@@ -151,6 +151,7 @@ function DashboardPage() {
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [startDate, endDate] = dateRange;
   const [groupBy, setGroupBy] = useState<'option' | 'product'>('option');
+  const [includeFakePurchase, setIncludeFakePurchase] = useState(false);
 
   // Product chart modal states
   const [selectedProduct, setSelectedProduct] = useState<ProductMetric | null>(null);
@@ -182,6 +183,13 @@ function DashboardPage() {
     setDateRange([start, end]);
   }, []);
 
+  // Refetch metrics when includeFakePurchase changes
+  useEffect(() => {
+    if (startDate && endDate && metrics) {
+      fetchMetrics();
+    }
+  }, [includeFakePurchase]);
+
   const handleGroupByChange = async (checked: boolean) => {
     const newGroupBy = checked ? 'product' : 'option';
     console.log(`[Toggle] Changing from ${groupBy} to ${newGroupBy}`);
@@ -208,6 +216,10 @@ function DashboardPage() {
           start_date: startDateStr,
           end_date: endDateStr,
           group_by: newGroupBy,
+          include_fake_purchase_adjustment: includeFakePurchase,
+        },
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
         },
       });
 
@@ -276,6 +288,10 @@ function DashboardPage() {
           start_date: startDateStr,
           end_date: endDateStr,
           group_by: groupBy,
+          include_fake_purchase_adjustment: includeFakePurchase,
+        },
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
         },
       });
       setMetrics(metricsResponse.data);
@@ -334,6 +350,7 @@ function DashboardPage() {
             option_id: groupBy === 'option' ? product.option_id : null,
             start_date: startDateStr,
             end_date: endDateStr,
+            include_fake_purchase_adjustment: includeFakePurchase,
           },
         }
       );
@@ -413,11 +430,24 @@ function DashboardPage() {
                 </Button>
               </div>
             </div>
-            {startDate && endDate && (
-              <p className="text-sm text-gray-500 mt-2">
-                선택된 기간: {format(startDate, 'yyyy년 MM월 dd일')} ~ {format(endDate, 'yyyy년 MM월 dd일')}
-              </p>
-            )}
+            <div className="mt-4 flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="fake-purchase-toggle"
+                  checked={includeFakePurchase}
+                  onCheckedChange={setIncludeFakePurchase}
+                  className="data-[state=unchecked]:bg-gray-300"
+                />
+                <Label htmlFor="fake-purchase-toggle" className="cursor-pointer">
+                  가구매 반영 (매출 차감, 비용 증가)
+                </Label>
+              </div>
+              {startDate && endDate && (
+                <p className="text-sm text-gray-500">
+                  선택된 기간: {format(startDate, 'yyyy년 MM월 dd일')} ~ {format(endDate, 'yyyy년 MM월 dd일')}
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
 

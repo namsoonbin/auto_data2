@@ -2,11 +2,11 @@
 from fastapi import APIRouter, Query, HTTPException, Depends
 from datetime import date, datetime, timedelta
 from typing import Optional, List
-from sqlalchemy import func
+from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
 
 from models.schemas import MetricsResponse, DailyMetric, ProductMetric, SummaryResponse
-from services.database import get_db, IntegratedRecord
+from services.database import get_db, IntegratedRecord, FakePurchase
 from models.auth import User, Tenant
 from auth.dependencies import get_current_user, get_current_tenant
 
@@ -19,6 +19,7 @@ async def get_metrics(
     end_date: Optional[date] = Query(None),
     product: Optional[str] = Query(None),
     group_by: str = Query('option', regex='^(option|product)$'),
+    include_fake_purchase_adjustment: bool = Query(False, description="가구매 조정 포함 여부"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant)
@@ -27,6 +28,7 @@ async def get_metrics(
 
     Args:
         group_by: 'option' (default) - group by option_id, 'product' - group by product_name
+        include_fake_purchase_adjustment: If True, adjust metrics by deducting fake purchases
     """
 
     # Build query - filter by tenant
@@ -41,6 +43,35 @@ async def get_metrics(
         query = query.filter(IntegratedRecord.product_name.like(f"%{product}%"))
 
     records = query.all()
+
+    # 가구매 조정 로직
+    fake_purchase_adjustments = {}  # {(date, option_id): {sales_deduction, quantity_deduction, ad_cost_addition}}
+
+    if include_fake_purchase_adjustment:
+        # Query fake purchases for the same date range
+        fake_query = db.query(FakePurchase).filter(FakePurchase.tenant_id == current_tenant.id)
+
+        if start_date:
+            fake_query = fake_query.filter(FakePurchase.date >= start_date)
+        if end_date:
+            fake_query = fake_query.filter(FakePurchase.date <= end_date)
+        if product:
+            fake_query = fake_query.filter(FakePurchase.product_name.like(f"%{product}%"))
+
+        fake_purchases = fake_query.all()
+
+        # Build adjustments dictionary
+        for fp in fake_purchases:
+            key = (fp.date, fp.option_id)
+
+            # Calculate sales deduction (quantity × unit_price)
+            sales_deduction = (fp.quantity or 0) * (fp.unit_price or 0)
+
+            fake_purchase_adjustments[key] = {
+                'sales_deduction': sales_deduction,
+                'quantity_deduction': fp.quantity or 0,
+                'ad_cost_addition': fp.total_cost or 0  # 이미 계산된 가구매 비용
+            }
 
     if not records:
         return MetricsResponse(
@@ -68,10 +99,28 @@ async def get_metrics(
                 'margin_rate': 0.0
             }
 
-        daily_metrics[date_key]['total_sales'] += record.sales_amount
-        daily_metrics[date_key]['total_profit'] += record.net_profit
-        daily_metrics[date_key]['ad_cost'] += record.ad_cost
-        daily_metrics[date_key]['total_quantity'] += record.sales_quantity
+        # Apply fake purchase adjustments if needed
+        adjustment_key = (record.date, record.option_id)
+        adjustment = fake_purchase_adjustments.get(adjustment_key, {})
+
+        sales_deduction = adjustment.get('sales_deduction', 0)
+        quantity_deduction = adjustment.get('quantity_deduction', 0)
+        ad_cost_addition = adjustment.get('ad_cost_addition', 0)
+
+        # Adjust sales and quantity (차감)
+        adjusted_sales = record.sales_amount - sales_deduction
+        adjusted_quantity = record.sales_quantity - quantity_deduction
+
+        # Adjust profit (매출 감소만큼 이익도 감소, 그리고 광고비 증가만큼 추가 감소)
+        adjusted_profit = record.net_profit - sales_deduction - ad_cost_addition
+
+        # Adjust ad cost (증가)
+        adjusted_ad_cost = record.ad_cost + ad_cost_addition
+
+        daily_metrics[date_key]['total_sales'] += adjusted_sales
+        daily_metrics[date_key]['total_profit'] += adjusted_profit
+        daily_metrics[date_key]['ad_cost'] += adjusted_ad_cost
+        daily_metrics[date_key]['total_quantity'] += adjusted_quantity
 
     # Calculate margin rate for each day
     for metrics in daily_metrics.values():
@@ -106,10 +155,24 @@ async def get_metrics(
                     'ad_cost_rate': 0.0
                 }
 
-            product_metrics[option_id]['total_sales'] += record.sales_amount
-            product_metrics[option_id]['total_profit'] += record.net_profit
-            product_metrics[option_id]['total_quantity'] += record.sales_quantity
-            product_metrics[option_id]['total_ad_cost'] += record.ad_cost
+            # Apply fake purchase adjustments if needed
+            adjustment_key = (record.date, record.option_id)
+            adjustment = fake_purchase_adjustments.get(adjustment_key, {})
+
+            sales_deduction = adjustment.get('sales_deduction', 0)
+            quantity_deduction = adjustment.get('quantity_deduction', 0)
+            ad_cost_addition = adjustment.get('ad_cost_addition', 0)
+
+            # Adjust values
+            adjusted_sales = record.sales_amount - sales_deduction
+            adjusted_quantity = record.sales_quantity - quantity_deduction
+            adjusted_profit = record.net_profit - sales_deduction - ad_cost_addition
+            adjusted_ad_cost = record.ad_cost + ad_cost_addition
+
+            product_metrics[option_id]['total_sales'] += adjusted_sales
+            product_metrics[option_id]['total_profit'] += adjusted_profit
+            product_metrics[option_id]['total_quantity'] += adjusted_quantity
+            product_metrics[option_id]['total_ad_cost'] += adjusted_ad_cost
             product_metrics[option_id]['total_cost'] += record.total_cost
     else:
         # 상품별로 통합 표시 (product_name 기준 그룹핑)
@@ -131,10 +194,24 @@ async def get_metrics(
                     'ad_cost_rate': 0.0
                 }
 
-            product_metrics[product_name]['total_sales'] += record.sales_amount
-            product_metrics[product_name]['total_profit'] += record.net_profit
-            product_metrics[product_name]['total_quantity'] += record.sales_quantity
-            product_metrics[product_name]['total_ad_cost'] += record.ad_cost
+            # Apply fake purchase adjustments if needed
+            adjustment_key = (record.date, record.option_id)
+            adjustment = fake_purchase_adjustments.get(adjustment_key, {})
+
+            sales_deduction = adjustment.get('sales_deduction', 0)
+            quantity_deduction = adjustment.get('quantity_deduction', 0)
+            ad_cost_addition = adjustment.get('ad_cost_addition', 0)
+
+            # Adjust values
+            adjusted_sales = record.sales_amount - sales_deduction
+            adjusted_quantity = record.sales_quantity - quantity_deduction
+            adjusted_profit = record.net_profit - sales_deduction - ad_cost_addition
+            adjusted_ad_cost = record.ad_cost + ad_cost_addition
+
+            product_metrics[product_name]['total_sales'] += adjusted_sales
+            product_metrics[product_name]['total_profit'] += adjusted_profit
+            product_metrics[product_name]['total_quantity'] += adjusted_quantity
+            product_metrics[product_name]['total_ad_cost'] += adjusted_ad_cost
             product_metrics[product_name]['total_cost'] += record.total_cost
 
             # Collect unique option names
@@ -366,6 +443,7 @@ async def get_product_trend(
     option_id: Optional[int] = Query(None, description="Optional option ID to filter"),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
+    include_fake_purchase_adjustment: bool = Query(False, description="가구매 조정 포함 여부"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant)
@@ -395,6 +473,32 @@ async def get_product_trend(
             "daily_trend": []
         }
 
+    # Build fake purchase adjustments dictionary
+    fake_purchase_adjustments = {}
+
+    if include_fake_purchase_adjustment:
+        fake_query = db.query(FakePurchase).filter(FakePurchase.tenant_id == current_tenant.id)
+        fake_query = fake_query.filter(FakePurchase.product_name == product_name)
+
+        if option_id:
+            fake_query = fake_query.filter(FakePurchase.option_id == option_id)
+        if start_date:
+            fake_query = fake_query.filter(FakePurchase.date >= start_date)
+        if end_date:
+            fake_query = fake_query.filter(FakePurchase.date <= end_date)
+
+        fake_purchases = fake_query.all()
+
+        for fp in fake_purchases:
+            key = (fp.date, fp.option_id)
+            sales_deduction = (fp.quantity or 0) * (fp.unit_price or 0)
+
+            fake_purchase_adjustments[key] = {
+                'sales_deduction': sales_deduction,
+                'quantity_deduction': fp.quantity or 0,
+                'ad_cost_addition': fp.total_cost or 0
+            }
+
     # Group by date and sum values
     daily_metrics = {}
     for record in records:
@@ -408,10 +512,23 @@ async def get_product_trend(
                 'total_quantity': 0
             }
 
-        daily_metrics[date_key]['total_sales'] += record.sales_amount
-        daily_metrics[date_key]['total_profit'] += record.net_profit
-        daily_metrics[date_key]['ad_cost'] += record.ad_cost
-        daily_metrics[date_key]['total_quantity'] += record.sales_quantity
+        # Apply fake purchase adjustments
+        adjustment_key = (record.date, record.option_id)
+        adjustment = fake_purchase_adjustments.get(adjustment_key, {})
+
+        sales_deduction = adjustment.get('sales_deduction', 0)
+        quantity_deduction = adjustment.get('quantity_deduction', 0)
+        ad_cost_addition = adjustment.get('ad_cost_addition', 0)
+
+        adjusted_sales = record.sales_amount - sales_deduction
+        adjusted_quantity = record.sales_quantity - quantity_deduction
+        adjusted_profit = record.net_profit - sales_deduction - ad_cost_addition
+        adjusted_ad_cost = record.ad_cost + ad_cost_addition
+
+        daily_metrics[date_key]['total_sales'] += adjusted_sales
+        daily_metrics[date_key]['total_profit'] += adjusted_profit
+        daily_metrics[date_key]['ad_cost'] += adjusted_ad_cost
+        daily_metrics[date_key]['total_quantity'] += adjusted_quantity
 
     # Sort by date
     daily_trend = sorted(daily_metrics.values(), key=lambda x: x['date'])

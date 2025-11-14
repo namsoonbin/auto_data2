@@ -7,7 +7,7 @@ from datetime import date
 import pandas as pd
 import io
 
-from services.database import get_db, IntegratedRecord
+from services.database import get_db, IntegratedRecord, FakePurchase
 from models.schemas import BatchDeleteRequest, BatchDeleteResponse
 from models.auth import User, Tenant
 from auth.dependencies import get_current_user, get_current_tenant
@@ -21,12 +21,71 @@ async def get_all_records(
     offset: Optional[int] = Query(0, description="Offset for pagination"),
     start_date: Optional[date] = Query(None, description="Filter from this date"),
     end_date: Optional[date] = Query(None, description="Filter to this date"),
+    option_id: Optional[int] = Query(None, description="Filter by option ID"),
+    product_name: Optional[str] = Query(None, description="Search by product name (partial match)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant)
 ):
     """Get all integrated records with optional pagination and date filtering"""
+
+    # Special handling for product_name search - return unique products only
+    if product_name and not option_id:
+        # Get unique products by using subquery with DISTINCT on option_id
+        from sqlalchemy import func
+
+        subquery = db.query(
+            IntegratedRecord.option_id,
+            IntegratedRecord.product_name,
+            IntegratedRecord.option_name,
+            func.max(IntegratedRecord.date).label('latest_date'),
+            func.sum(IntegratedRecord.sales_quantity).label('total_sales_quantity')
+        ).filter(
+            IntegratedRecord.tenant_id == current_tenant.id,
+            IntegratedRecord.product_name.ilike(f"%{product_name}%")
+        ).group_by(
+            IntegratedRecord.option_id,
+            IntegratedRecord.product_name,
+            IntegratedRecord.option_name
+        ).order_by(func.sum(IntegratedRecord.sales_quantity).desc())
+
+        # Apply pagination to subquery
+        if limit:
+            subquery = subquery.offset(offset).limit(limit)
+
+        results = subquery.all()
+
+        return {
+            "records": [
+                {
+                    "id": None,
+                    "option_id": row.option_id,
+                    "option_name": row.option_name,
+                    "product_name": row.product_name,
+                    "date": row.latest_date.isoformat() if row.latest_date else None,
+                    "sales_amount": None,
+                    "sales_quantity": None,
+                    "ad_cost": None,
+                    "net_profit": None,
+                    "actual_margin_rate": None,
+                    "roas": None
+                }
+                for row in results
+            ],
+            "count": len(results),
+            "total": len(results)
+        }
+
+    # Normal query for other cases
     query = db.query(IntegratedRecord).filter(IntegratedRecord.tenant_id == current_tenant.id)
+
+    # Apply option_id filtering
+    if option_id:
+        query = query.filter(IntegratedRecord.option_id == option_id)
+
+    # Apply product_name filtering (partial match)
+    if product_name:
+        query = query.filter(IntegratedRecord.product_name.ilike(f"%{product_name}%"))
 
     # Apply date filtering
     if start_date:
@@ -145,6 +204,7 @@ async def export_data(
     include_ads: bool = Query(True),
     include_margin: bool = Query(True),
     include_calculated: bool = Query(True),
+    include_fake_purchase_adjustment: bool = Query(False, description="가구매 조정 포함 여부"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant)
@@ -177,9 +237,71 @@ async def export_data(
     if not records:
         raise HTTPException(status_code=404, detail="No records found")
 
+    # Build fake purchase adjustments dictionary
+    fake_purchase_adjustments = {}
+
+    if include_fake_purchase_adjustment:
+        fake_query = db.query(FakePurchase).filter(FakePurchase.tenant_id == current_tenant.id)
+
+        if start_date:
+            fake_query = fake_query.filter(FakePurchase.date >= start_date)
+        if end_date:
+            fake_query = fake_query.filter(FakePurchase.date <= end_date)
+
+        fake_purchases = fake_query.all()
+
+        for fp in fake_purchases:
+            key = (fp.date, fp.option_id)
+            sales_deduction = (fp.quantity or 0) * (fp.unit_price or 0)
+
+            fake_purchase_adjustments[key] = {
+                'sales_deduction': sales_deduction,
+                'quantity_deduction': fp.quantity or 0,
+                'ad_cost_addition': fp.total_cost or 0
+            }
+
     # Build DataFrame
     data = []
     for record in records:
+        # Apply fake purchase adjustments
+        adjustment_key = (record.date, record.option_id)
+        adjustment = fake_purchase_adjustments.get(adjustment_key, {})
+
+        sales_deduction = adjustment.get('sales_deduction', 0)
+        quantity_deduction = adjustment.get('quantity_deduction', 0)
+        ad_cost_addition = adjustment.get('ad_cost_addition', 0)
+
+        # Calculate adjusted values
+        adjusted_sales = record.sales_amount - sales_deduction
+        adjusted_quantity = record.sales_quantity - quantity_deduction
+        adjusted_ad_cost = record.ad_cost + ad_cost_addition
+
+        # Recalculate metrics with adjusted values
+        # Unit cost per item
+        unit_cost = (record.cost_price or 0) + (record.fee_amount or 0) + (record.vat or 0)
+        adjusted_total_cost = unit_cost * adjusted_quantity
+        adjusted_net_profit = adjusted_sales - adjusted_total_cost - adjusted_ad_cost * 1.1
+
+        # Actual margin rate (%)
+        adjusted_actual_margin_rate = 0
+        if adjusted_sales > 0:
+            adjusted_actual_margin_rate = (adjusted_net_profit / adjusted_sales) * 100
+
+        # Cost rate (%)
+        adjusted_cost_rate = 0
+        if adjusted_sales > 0:
+            adjusted_cost_rate = ((adjusted_sales - adjusted_total_cost) / adjusted_sales) * 100
+
+        # Ad cost rate (%)
+        adjusted_ad_cost_rate = 0
+        if adjusted_sales > 0:
+            adjusted_ad_cost_rate = (adjusted_ad_cost * 1.1 / adjusted_sales) * 100
+
+        # ROAS
+        adjusted_roas = 0
+        if adjusted_ad_cost > 0:
+            adjusted_roas = (record.conversion_sales / adjusted_ad_cost) * 100
+
         row = {}
 
         # Basic fields
@@ -191,13 +313,13 @@ async def export_data(
 
         # Sales fields
         if include_sales:
-            row["매출액"] = record.sales_amount
-            row["판매량"] = record.sales_quantity
+            row["매출액"] = adjusted_sales
+            row["판매량"] = adjusted_quantity
             row["주문수"] = record.order_count
 
         # Ads fields
         if include_ads:
-            row["광고비"] = record.ad_cost
+            row["광고비"] = adjusted_ad_cost
             row["노출수"] = record.impressions
             row["클릭수"] = record.clicks
             row["전환매출액"] = record.conversion_sales
@@ -207,17 +329,22 @@ async def export_data(
             row["도매가"] = record.cost_price
             row["판매가"] = record.selling_price
             row["수수료율"] = record.fee_rate
-            row["총수수료액"] = record.fee_amount * record.sales_quantity  # 총 수수료액 = 단위 수수료액 × 판매량
-            row["총부가세"] = record.vat * record.sales_quantity  # 총 부가세 = 단위 부가세 × 판매량
+            row["총수수료액"] = record.fee_amount * adjusted_quantity  # 총 수수료액 = 단위 수수료액 × 조정된 판매량
+            row["총부가세"] = record.vat * adjusted_quantity  # 총 부가세 = 단위 부가세 × 조정된 판매량
 
         # Calculated fields
         if include_calculated:
-            row["총원가"] = record.total_cost
-            row["순이익"] = record.net_profit
-            row["마진율"] = record.cost_rate
-            row["광고비율"] = record.ad_cost_rate
-            row["이윤율"] = record.actual_margin_rate
-            row["ROAS"] = record.roas
+            row["총원가"] = adjusted_total_cost
+            row["순이익"] = adjusted_net_profit
+            row["마진율"] = adjusted_cost_rate
+            row["광고비율"] = adjusted_ad_cost_rate
+            row["이윤율"] = adjusted_actual_margin_rate
+            row["ROAS"] = adjusted_roas
+
+        # Fake purchase fields (only when adjustment is enabled)
+        if include_fake_purchase_adjustment:
+            row["가구매수량"] = quantity_deduction
+            row["가구매비용"] = ad_cost_addition
 
         data.append(row)
 
@@ -239,7 +366,7 @@ async def export_data(
             # Remove date from aggregation - we'll add period info instead
 
         # Sum numeric fields
-        numeric_cols = ["매출액", "판매량", "주문수", "광고비", "노출수", "클릭수", "전환매출액", "총원가", "순이익", "총수수료액", "총부가세"]
+        numeric_cols = ["매출액", "판매량", "주문수", "광고비", "노출수", "클릭수", "전환매출액", "총원가", "순이익", "총수수료액", "총부가세", "가구매수량", "가구매비용"]
         for col in numeric_cols:
             if col in df.columns:
                 agg_dict[col] = 'sum'
@@ -285,7 +412,7 @@ async def export_data(
                 agg_dict["옵션명"] = lambda x: ", ".join(x.dropna().unique()) if len(x.dropna()) > 0 else ""
 
         # Sum numeric fields
-        numeric_cols = ["매출액", "판매량", "주문수", "광고비", "노출수", "클릭수", "전환매출액", "총원가", "순이익", "총수수료액", "총부가세"]
+        numeric_cols = ["매출액", "판매량", "주문수", "광고비", "노출수", "클릭수", "전환매출액", "총원가", "순이익", "총수수료액", "총부가세", "가구매수량", "가구매비용"]
         for col in numeric_cols:
             if col in df.columns:
                 agg_dict[col] = 'sum'
@@ -329,7 +456,7 @@ async def export_data(
                 agg_dict["옵션명"] = lambda x: ", ".join(x.dropna().unique()) if len(x.dropna()) > 0 else ""
 
         # Sum numeric fields
-        numeric_cols = ["매출액", "판매량", "주문수", "광고비", "노출수", "클릭수", "전환매출액", "총원가", "순이익", "총수수료액", "총부가세"]
+        numeric_cols = ["매출액", "판매량", "주문수", "광고비", "노출수", "클릭수", "전환매출액", "총원가", "순이익", "총수수료액", "총부가세", "가구매수량", "가구매비용"]
         for col in numeric_cols:
             if col in df.columns:
                 agg_dict[col] = 'sum'
@@ -398,6 +525,12 @@ async def export_data(
     # Calculated fields
     calculated_fields = ["총원가", "순이익", "마진율", "광고비율", "이윤율", "ROAS"]
     for field in calculated_fields:
+        if field in df.columns:
+            desired_order.append(field)
+
+    # Fake purchase fields
+    fake_purchase_fields = ["가구매수량", "가구매비용"]
+    for field in fake_purchase_fields:
         if field in df.columns:
             desired_order.append(field)
 

@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from routers import upload, metrics, report, data, margins, auth, team
+from routers import upload, metrics, report, data, margins, auth, team, fake_purchases
 from services.database import init_db, close_db
 
 
@@ -58,6 +58,7 @@ app.include_router(metrics.router, prefix="/api", tags=["Metrics"])
 app.include_router(report.router, prefix="/api", tags=["Reports"])
 app.include_router(data.router, prefix="/api", tags=["Data Management"])
 app.include_router(margins.router, prefix="/api", tags=["Margin Management"])
+app.include_router(fake_purchases.router, prefix="/api", tags=["Fake Purchase Management"])
 
 
 @app.get("/")

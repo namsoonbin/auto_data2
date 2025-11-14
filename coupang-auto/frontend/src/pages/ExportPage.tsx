@@ -101,6 +101,7 @@ function ExportPage() {
     margin: true,
     calculated: true,
   });
+  const [includeFakePurchaseAdjustment, setIncludeFakePurchaseAdjustment] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<ExportResult | null>(null);
 
@@ -139,6 +140,7 @@ function ExportPage() {
           include_ads: includeFields.ads,
           include_margin: includeFields.margin,
           include_calculated: includeFields.calculated,
+          include_fake_purchase_adjustment: includeFakePurchaseAdjustment,
         },
         responseType: 'blob', // Important for file download
       });
@@ -330,6 +332,24 @@ function ExportPage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Fake Purchase Adjustment Option */}
+            <div className="pt-2 border-t">
+              <Label className="mb-3 block">가구매 조정</Label>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="fake-purchase-adjustment"
+                  checked={includeFakePurchaseAdjustment}
+                  onCheckedChange={(checked) => setIncludeFakePurchaseAdjustment(checked as boolean)}
+                />
+                <Label htmlFor="fake-purchase-adjustment" className="font-normal cursor-pointer">
+                  가구매를 반영하여 매출/광고비 조정 (체크하면 가구매를 제외한 실제 데이터로 계산)
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 ml-6">
+                가구매로 등록된 항목의 매출과 판매량을 차감하고, 가구매 비용을 광고비에 추가합니다
+              </p>
             </div>
 
             {/* Export Button */}

@@ -13,6 +13,7 @@ import {
   Users,
   Menu,
   X,
+  ShoppingCart,
 } from 'lucide-react';
 import HomePage from './pages/HomePage';
 import DashboardPage from './pages/DashboardPage';
@@ -20,6 +21,7 @@ import HistoryPage from './pages/HistoryPage';
 import DataManagementPage from './pages/DataManagementPage';
 import ExportPage from './pages/ExportPage';
 import MarginManagementPage from './pages/MarginManagementPage';
+import FakePurchaseManagementPage from './pages/FakePurchaseManagementPage';
 import LoginPage from './pages/LoginPage';
 import ProfileSettingsPage from './pages/ProfileSettingsPage';
 import TeamManagementPage from './pages/TeamManagementPage';
@@ -38,6 +40,7 @@ const menuItems: MenuItem[] = [
   { text: '파일 업로드', icon: <Upload className="h-5 w-5" />, path: '/' },
   { text: '대시보드', icon: <LayoutDashboard className="h-5 w-5" />, path: '/dashboard' },
   { text: '마진 관리', icon: <Calculator className="h-5 w-5" />, path: '/margins' },
+  { text: '가구매 관리', icon: <ShoppingCart className="h-5 w-5" />, path: '/fake-purchases' },
   { text: '업로드 히스토리', icon: <History className="h-5 w-5" />, path: '/history' },
   { text: '데이터 관리', icon: <Trash2 className="h-5 w-5" />, path: '/management' },
   { text: '엑셀 다운로드', icon: <Download className="h-5 w-5" />, path: '/export' },
@@ -173,6 +176,14 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <MarginManagementPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/fake-purchases"
+              element={
+                <ProtectedRoute>
+                  <FakePurchaseManagementPage />
                 </ProtectedRoute>
               }
             />
