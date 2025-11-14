@@ -732,7 +732,7 @@ function MarginManagementPage() {
                       </TableHeader>
                       <TableBody>
                         {filteredMargins.map((margin) => (
-                          <TableRow key={margin.option_id} className="hover:bg-gray-50">
+                          <TableRow key={margin.id} className="hover:bg-gray-50">
                             <TableCell>{margin.option_id}</TableCell>
                             <TableCell>
                               <div>
@@ -836,8 +836,8 @@ function MarginManagementPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {unmatchedProducts.map((product) => (
-                          <TableRow key={product.option_id} className="hover:bg-gray-50">
+                        {unmatchedProducts.map((product, index) => (
+                          <TableRow key={`unmatched-${product.option_id}-${index}`} className="hover:bg-gray-50">
                             <TableCell>{product.option_id}</TableCell>
                             <TableCell>
                               <div>

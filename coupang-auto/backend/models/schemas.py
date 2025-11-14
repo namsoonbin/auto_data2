@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from __future__ import annotations
+
 from typing import Optional, List
 from datetime import date, datetime
 from pydantic import BaseModel, Field
@@ -229,3 +231,57 @@ class BatchDeleteResponse(BaseModel):
     """Schema for batch delete response"""
     message: str
     deleted_count: int
+
+
+# Fake Purchase Schemas
+
+class FakePurchaseBase(BaseModel):
+    """Base schema for fake purchase data"""
+    option_id: int
+    product_name: Optional[str] = None  # 자동으로 채워질 수 있음
+    option_name: Optional[str] = None
+    date: date
+    quantity: int = Field(ge=0)
+    unit_price: float = Field(default=0.0, ge=0)
+    notes: Optional[str] = None
+
+
+class FakePurchaseCreate(FakePurchaseBase):
+    """Schema for creating new fake purchase record"""
+    pass
+
+
+class FakePurchaseUpdate(BaseModel):
+    """Schema for updating fake purchase record (all fields optional)"""
+    quantity: Optional[int] = Field(None, ge=0)
+    unit_price: Optional[float] = Field(None, ge=0)
+    notes: Optional[str] = None
+
+
+class FakePurchaseResponse(FakePurchaseBase):
+    """Schema for fake purchase record response"""
+    id: int
+    calculated_cost: float = Field(description="Calculated cost per unit: (price × 20.5%) + 4500")
+    total_cost: float = Field(description="Total cost: calculated_cost × quantity")
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FakePurchaseListResponse(BaseModel):
+    """Schema for list of fake purchases with metadata"""
+    fake_purchases: List[FakePurchaseResponse]
+    count: int
+    total: int = Field(description="Total records in database")
+
+
+class FakePurchaseAdjustment(BaseModel):
+    """Schema for metrics adjustment due to fake purchases"""
+    total_fake_purchases: int = Field(description="Total number of fake purchases")
+    sales_deduction: float = Field(description="Sales amount deducted")
+    ad_cost_addition: float = Field(description="Ad cost added (fake purchase costs)")
+    adjusted_total_sales: float = Field(description="Adjusted total sales")
+    adjusted_total_profit: float = Field(description="Adjusted net profit")
+    adjusted_total_ad_cost: float = Field(description="Adjusted ad cost")
