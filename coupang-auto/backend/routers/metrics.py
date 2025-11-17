@@ -45,7 +45,13 @@ async def get_metrics(
     records = query.all()
 
     # 가구매 조정 로직
-    fake_purchase_adjustments = {}  # {(date, option_id): {sales_deduction, quantity_deduction, ad_cost_addition}}
+    fake_purchase_adjustments = {}  # {(date, option_id): {sales_deduction, quantity_deduction, cost_saved}}
+
+    # IntegratedRecord에서 단위당 비용 정보를 미리 조회
+    unit_cost_map = {}  # {(date, option_id): (cost_price, fee_amount, vat)}
+    for record in records:
+        key = (record.date, record.option_id)
+        unit_cost_map[key] = (record.cost_price or 0, record.fee_amount or 0, record.vat or 0)
 
     if include_fake_purchase_adjustment:
         # Query fake purchases for the same date range
@@ -67,10 +73,18 @@ async def get_metrics(
             # Calculate sales deduction (quantity × unit_price)
             sales_deduction = (fp.quantity or 0) * (fp.unit_price or 0)
 
+            # Calculate cost saved (가구매는 실제로 비용이 발생하지 않았으므로)
+            # 비용 절감 = 가구매 수량 × (도매가 + 수수료 + 부가세)
+            cost_saved = 0
+            if key in unit_cost_map:
+                cost_price, fee_amount, vat = unit_cost_map[key]
+                unit_cost = cost_price + fee_amount + vat
+                cost_saved = (fp.quantity or 0) * unit_cost
+
             fake_purchase_adjustments[key] = {
                 'sales_deduction': sales_deduction,
                 'quantity_deduction': fp.quantity or 0,
-                'ad_cost_addition': fp.total_cost or 0  # 이미 계산된 가구매 비용
+                'cost_saved': cost_saved  # 실제로 지불하지 않은 비용 (이익에 더해져야 함)
             }
 
     if not records:
@@ -105,17 +119,19 @@ async def get_metrics(
 
         sales_deduction = adjustment.get('sales_deduction', 0)
         quantity_deduction = adjustment.get('quantity_deduction', 0)
-        ad_cost_addition = adjustment.get('ad_cost_addition', 0)
+        cost_saved = adjustment.get('cost_saved', 0)
 
         # Adjust sales and quantity (차감)
         adjusted_sales = record.sales_amount - sales_deduction
         adjusted_quantity = record.sales_quantity - quantity_deduction
 
-        # Adjust profit (매출 감소만큼 이익도 감소, 그리고 광고비 증가만큼 추가 감소)
-        adjusted_profit = record.net_profit - sales_deduction - ad_cost_addition
+        # Adjust profit
+        # - 매출 감소: sales_deduction 만큼 이익 감소
+        # + 비용 절감: 실제로 물건을 받지 않았으므로 cost_saved 만큼 이익 증가
+        adjusted_profit = record.net_profit - sales_deduction + cost_saved
 
-        # Adjust ad cost (증가)
-        adjusted_ad_cost = record.ad_cost + ad_cost_addition
+        # Adjust ad cost (가구매는 광고비와 무관)
+        adjusted_ad_cost = record.ad_cost
 
         daily_metrics[date_key]['total_sales'] += adjusted_sales
         daily_metrics[date_key]['total_profit'] += adjusted_profit
@@ -161,19 +177,20 @@ async def get_metrics(
 
             sales_deduction = adjustment.get('sales_deduction', 0)
             quantity_deduction = adjustment.get('quantity_deduction', 0)
-            ad_cost_addition = adjustment.get('ad_cost_addition', 0)
+            cost_saved = adjustment.get('cost_saved', 0)
 
             # Adjust values
             adjusted_sales = record.sales_amount - sales_deduction
             adjusted_quantity = record.sales_quantity - quantity_deduction
-            adjusted_profit = record.net_profit - sales_deduction - ad_cost_addition
-            adjusted_ad_cost = record.ad_cost + ad_cost_addition
+            adjusted_profit = record.net_profit - sales_deduction + cost_saved
+            adjusted_ad_cost = record.ad_cost
+            adjusted_total_cost = record.total_cost - cost_saved  # 실제로 지불하지 않은 비용 제외
 
             product_metrics[option_id]['total_sales'] += adjusted_sales
             product_metrics[option_id]['total_profit'] += adjusted_profit
             product_metrics[option_id]['total_quantity'] += adjusted_quantity
             product_metrics[option_id]['total_ad_cost'] += adjusted_ad_cost
-            product_metrics[option_id]['total_cost'] += record.total_cost
+            product_metrics[option_id]['total_cost'] += adjusted_total_cost
     else:
         # 상품별로 통합 표시 (product_name 기준 그룹핑)
         for record in records:
@@ -200,19 +217,20 @@ async def get_metrics(
 
             sales_deduction = adjustment.get('sales_deduction', 0)
             quantity_deduction = adjustment.get('quantity_deduction', 0)
-            ad_cost_addition = adjustment.get('ad_cost_addition', 0)
+            cost_saved = adjustment.get('cost_saved', 0)
 
             # Adjust values
             adjusted_sales = record.sales_amount - sales_deduction
             adjusted_quantity = record.sales_quantity - quantity_deduction
-            adjusted_profit = record.net_profit - sales_deduction - ad_cost_addition
-            adjusted_ad_cost = record.ad_cost + ad_cost_addition
+            adjusted_profit = record.net_profit - sales_deduction + cost_saved
+            adjusted_ad_cost = record.ad_cost
+            adjusted_total_cost = record.total_cost - cost_saved  # 실제로 지불하지 않은 비용 제외
 
             product_metrics[product_name]['total_sales'] += adjusted_sales
             product_metrics[product_name]['total_profit'] += adjusted_profit
             product_metrics[product_name]['total_quantity'] += adjusted_quantity
             product_metrics[product_name]['total_ad_cost'] += adjusted_ad_cost
-            product_metrics[product_name]['total_cost'] += record.total_cost
+            product_metrics[product_name]['total_cost'] += adjusted_total_cost
 
             # Collect unique option names
             if record.option_name and record.option_name not in product_metrics[product_name]['option_names']:
@@ -476,6 +494,12 @@ async def get_product_trend(
     # Build fake purchase adjustments dictionary
     fake_purchase_adjustments = {}
 
+    # IntegratedRecord에서 단위당 비용 정보를 미리 조회
+    unit_cost_map = {}  # {(date, option_id): (cost_price, fee_amount, vat)}
+    for record in records:
+        key = (record.date, record.option_id)
+        unit_cost_map[key] = (record.cost_price or 0, record.fee_amount or 0, record.vat or 0)
+
     if include_fake_purchase_adjustment:
         fake_query = db.query(FakePurchase).filter(FakePurchase.tenant_id == current_tenant.id)
         fake_query = fake_query.filter(FakePurchase.product_name == product_name)
@@ -493,10 +517,17 @@ async def get_product_trend(
             key = (fp.date, fp.option_id)
             sales_deduction = (fp.quantity or 0) * (fp.unit_price or 0)
 
+            # Calculate cost saved (가구매는 실제로 비용이 발생하지 않았으므로)
+            cost_saved = 0
+            if key in unit_cost_map:
+                cost_price, fee_amount, vat = unit_cost_map[key]
+                unit_cost = cost_price + fee_amount + vat
+                cost_saved = (fp.quantity or 0) * unit_cost
+
             fake_purchase_adjustments[key] = {
                 'sales_deduction': sales_deduction,
                 'quantity_deduction': fp.quantity or 0,
-                'ad_cost_addition': fp.total_cost or 0
+                'cost_saved': cost_saved
             }
 
     # Group by date and sum values
@@ -518,12 +549,12 @@ async def get_product_trend(
 
         sales_deduction = adjustment.get('sales_deduction', 0)
         quantity_deduction = adjustment.get('quantity_deduction', 0)
-        ad_cost_addition = adjustment.get('ad_cost_addition', 0)
+        cost_saved = adjustment.get('cost_saved', 0)
 
         adjusted_sales = record.sales_amount - sales_deduction
         adjusted_quantity = record.sales_quantity - quantity_deduction
-        adjusted_profit = record.net_profit - sales_deduction - ad_cost_addition
-        adjusted_ad_cost = record.ad_cost + ad_cost_addition
+        adjusted_profit = record.net_profit - sales_deduction + cost_saved
+        adjusted_ad_cost = record.ad_cost
 
         daily_metrics[date_key]['total_sales'] += adjusted_sales
         daily_metrics[date_key]['total_profit'] += adjusted_profit
