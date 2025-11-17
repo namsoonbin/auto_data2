@@ -12,18 +12,22 @@ from services.adjustment_service import build_fake_purchase_adjustments, apply_f
 from models.auth import User, Tenant
 from auth.dependencies import get_current_user, get_current_tenant
 from utils.query_helpers import escape_like_pattern
+from utils.performance import monitor_performance, PerformanceTracker
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
 @router.get("/metrics", response_model=MetricsResponse)
+@monitor_performance(threshold_ms=1000)  # 1초 이상 소요 시 경고
 async def get_metrics(
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     product: Optional[str] = Query(None),
     group_by: str = Query('option', regex='^(option|product)$'),
     include_fake_purchase_adjustment: bool = Query(False, description="가구매 조정 포함 여부"),
+    limit: Optional[int] = Query(None, ge=1, le=10000, description="최대 레코드 수 (성능 보호)"),
+    offset: int = Query(0, ge=0, description="건너뛸 레코드 수 (페이지네이션)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant)
@@ -76,6 +80,10 @@ async def get_metrics(
     if product:
         query = query.filter(IntegratedRecord.product_name.like(f"%{escape_like_pattern(product)}%"))
 
+    # Apply pagination
+    if limit:
+        query = query.limit(limit).offset(offset)
+
     records = query.all()
 
     # 가구매 조정 로직 (서비스 함수 사용)
@@ -101,9 +109,34 @@ async def get_metrics(
             by_product=[]
         )
 
-    # Calculate daily metrics
+    # Single-pass aggregation: Calculate both daily and product metrics in one iteration
     daily_metrics = {}
+    product_metrics = {}
+
     for record in records:
+        # Calculate adjustments once per record
+        adjustment_key = (record.date, record.option_id)
+        adjustment = fake_purchase_adjustments.get(adjustment_key, {})
+
+        sales_deduction = adjustment.get('sales_deduction', 0)
+        quantity_deduction = adjustment.get('quantity_deduction', 0)
+        cost_saved = adjustment.get('cost_saved', 0)
+
+        # Apply adjustments (계산은 한 번만)
+        adjusted_sales = record.sales_amount - sales_deduction
+        adjusted_quantity = record.sales_quantity - quantity_deduction
+        adjusted_profit = record.net_profit - sales_deduction + cost_saved
+        adjusted_ad_cost = record.ad_cost
+        adjusted_total_cost = record.total_cost - cost_saved
+
+        # 음수 수량 검증 (가구매 수량이 실제 판매 초과)
+        if adjusted_quantity < 0:
+            logger.warning(
+                f"음수 수량 발생: date={record.date}, option_id={record.option_id}, "
+                f"sales_quantity={record.sales_quantity}, quantity_deduction={quantity_deduction}"
+            )
+
+        # Build daily metrics
         date_key = record.date
         if date_key not in daily_metrics:
             daily_metrics[date_key] = {
@@ -115,56 +148,14 @@ async def get_metrics(
                 'margin_rate': 0.0
             }
 
-        # Apply fake purchase adjustments if needed
-        adjustment_key = (record.date, record.option_id)
-        adjustment = fake_purchase_adjustments.get(adjustment_key, {})
-
-        sales_deduction = adjustment.get('sales_deduction', 0)
-        quantity_deduction = adjustment.get('quantity_deduction', 0)
-        cost_saved = adjustment.get('cost_saved', 0)
-
-        # Adjust sales and quantity (차감)
-        adjusted_sales = record.sales_amount - sales_deduction
-        adjusted_quantity = record.sales_quantity - quantity_deduction
-
-        # 음수 수량 검증 (가구매 수량이 실제 판매 초과)
-        if adjusted_quantity < 0:
-            logger.warning(
-                f"음수 수량 발생: date={record.date}, option_id={record.option_id}, "
-                f"sales_quantity={record.sales_quantity}, quantity_deduction={quantity_deduction}, "
-                f"adjusted_quantity={adjusted_quantity}"
-            )
-
-        # Adjust profit
-        # - 매출 감소: sales_deduction 만큼 이익 감소
-        # + 비용 절감: 실제로 물건을 받지 않았으므로 cost_saved 만큼 이익 증가
-        adjusted_profit = record.net_profit - sales_deduction + cost_saved
-
-        # Adjust ad cost (가구매는 광고비와 무관)
-        adjusted_ad_cost = record.ad_cost
-
         daily_metrics[date_key]['total_sales'] += adjusted_sales
         daily_metrics[date_key]['total_profit'] += adjusted_profit
         daily_metrics[date_key]['ad_cost'] += adjusted_ad_cost
         daily_metrics[date_key]['total_quantity'] += adjusted_quantity
 
-    # Calculate margin rate for each day
-    for metrics in daily_metrics.values():
-        if metrics['total_sales'] > 0:
-            metrics['margin_rate'] = (metrics['total_profit'] / metrics['total_sales']) * 100
-
-    # Sort daily trend by date
-    daily_trend = [
-        DailyMetric(**metrics)
-        for metrics in sorted(daily_metrics.values(), key=lambda x: x['date'])
-    ]
-
-    # Calculate product metrics
-    product_metrics = {}
-
-    if group_by == 'option':
-        # 옵션별로 개별 표시 (기존 방식)
-        for record in records:
+        # Build product metrics (group_by dependent)
+        if group_by == 'option':
+            # 옵션별로 개별 표시
             option_id = record.option_id
             if option_id not in product_metrics:
                 product_metrics[option_id] = {
@@ -181,43 +172,19 @@ async def get_metrics(
                     'ad_cost_rate': 0.0
                 }
 
-            # Apply fake purchase adjustments if needed
-            adjustment_key = (record.date, record.option_id)
-            adjustment = fake_purchase_adjustments.get(adjustment_key, {})
-
-            sales_deduction = adjustment.get('sales_deduction', 0)
-            quantity_deduction = adjustment.get('quantity_deduction', 0)
-            cost_saved = adjustment.get('cost_saved', 0)
-
-            # Adjust values
-            adjusted_sales = record.sales_amount - sales_deduction
-            adjusted_quantity = record.sales_quantity - quantity_deduction
-
-            # 음수 수량 검증
-            if adjusted_quantity < 0:
-                logger.warning(
-                    f"음수 수량 발생 (option): date={record.date}, option_id={record.option_id}, "
-                    f"sales_quantity={record.sales_quantity}, quantity_deduction={quantity_deduction}"
-                )
-
-            adjusted_profit = record.net_profit - sales_deduction + cost_saved
-            adjusted_ad_cost = record.ad_cost
-            adjusted_total_cost = record.total_cost - cost_saved  # 실제로 지불하지 않은 비용 제외
-
             product_metrics[option_id]['total_sales'] += adjusted_sales
             product_metrics[option_id]['total_profit'] += adjusted_profit
             product_metrics[option_id]['total_quantity'] += adjusted_quantity
             product_metrics[option_id]['total_ad_cost'] += adjusted_ad_cost
             product_metrics[option_id]['total_cost'] += adjusted_total_cost
-    else:
-        # 상품별로 통합 표시 (product_name 기준 그룹핑)
-        for record in records:
+        else:
+            # 상품별로 통합 표시 (product_name 기준 그룹핑)
             product_name = record.product_name
             if product_name not in product_metrics:
                 product_metrics[product_name] = {
-                    'option_id': 0,  # Dummy value for grouped view
+                    'option_id': 0,
                     'option_name': '',
-                    'option_names': [],  # Collect all option names
+                    'option_names': [],
                     'product_name': product_name,
                     'total_sales': 0.0,
                     'total_profit': 0.0,
@@ -229,30 +196,6 @@ async def get_metrics(
                     'ad_cost_rate': 0.0
                 }
 
-            # Apply fake purchase adjustments if needed
-            adjustment_key = (record.date, record.option_id)
-            adjustment = fake_purchase_adjustments.get(adjustment_key, {})
-
-            sales_deduction = adjustment.get('sales_deduction', 0)
-            quantity_deduction = adjustment.get('quantity_deduction', 0)
-            cost_saved = adjustment.get('cost_saved', 0)
-
-            # Adjust values
-            adjusted_sales = record.sales_amount - sales_deduction
-            adjusted_quantity = record.sales_quantity - quantity_deduction
-
-            # 음수 수량 검증
-            if adjusted_quantity < 0:
-                logger.warning(
-                    f"음수 수량 발생 (product): date={record.date}, option_id={record.option_id}, "
-                    f"product_name={product_name}, sales_quantity={record.sales_quantity}, "
-                    f"quantity_deduction={quantity_deduction}"
-                )
-
-            adjusted_profit = record.net_profit - sales_deduction + cost_saved
-            adjusted_ad_cost = record.ad_cost
-            adjusted_total_cost = record.total_cost - cost_saved  # 실제로 지불하지 않은 비용 제외
-
             product_metrics[product_name]['total_sales'] += adjusted_sales
             product_metrics[product_name]['total_profit'] += adjusted_profit
             product_metrics[product_name]['total_quantity'] += adjusted_quantity
@@ -263,13 +206,25 @@ async def get_metrics(
             if record.option_name and record.option_name not in product_metrics[product_name]['option_names']:
                 product_metrics[product_name]['option_names'].append(record.option_name)
 
-        # Join option names
+    # Post-processing for product mode: join option names
+    if group_by == 'product':
         for metrics in product_metrics.values():
             if metrics['option_names']:
                 metrics['option_name'] = ', '.join(metrics['option_names'])
-            del metrics['option_names']  # Remove temporary field
+            del metrics['option_names']
 
-    # Calculate margin rate, cost rate, ad cost rate
+    # Calculate margin rates for daily metrics
+    for metrics in daily_metrics.values():
+        if metrics['total_sales'] > 0:
+            metrics['margin_rate'] = (metrics['total_profit'] / metrics['total_sales']) * 100
+
+    # Sort daily trend by date
+    daily_trend = [
+        DailyMetric(**metrics)
+        for metrics in sorted(daily_metrics.values(), key=lambda x: x['date'])
+    ]
+
+    # Calculate margin rate, cost rate, ad cost rate for product metrics
     for metrics in product_metrics.values():
         if metrics['total_sales'] != 0:
             metrics['margin_rate'] = (metrics['total_profit'] / metrics['total_sales']) * 100
