@@ -285,7 +285,7 @@ async def get_metrics(
     total_sales = sum(m.total_sales for m in daily_trend)
     total_ad_cost = sum(m.ad_cost for m in daily_trend)
     total_profit = sum(m.total_profit for m in daily_trend)
-    total_quantity = sum(record.sales_quantity for record in records)
+    total_quantity = sum(m.total_quantity for m in daily_trend)  # 가구매 조정 반영
     avg_margin_rate = (total_profit / total_sales * 100) if total_sales > 0 else 0
 
     # Build response
