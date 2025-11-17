@@ -10,7 +10,7 @@ from models.schemas import (
     FakePurchaseListResponse, BatchDeleteRequest, BatchDeleteResponse
 )
 from models.auth import User, Tenant
-from services.database import get_db, FakePurchase
+from services.database import get_db, FakePurchase, IntegratedRecord
 from auth.dependencies import get_current_user, get_current_tenant
 
 router = APIRouter()

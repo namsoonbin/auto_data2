@@ -233,7 +233,7 @@ class FakePurchase(Base):
     unit_price = Column(Float, nullable=True, default=0.0)  # 상품 단가 (참고용)
 
     # 계산된 비용
-    # 가구매 비용 = (상품가격 × 20.5%) + 4500원
+    # 가구매 비용 = (상품가격 × 12%) + 4500원
     calculated_cost = Column(Float, nullable=True, default=0.0)  # 단위당 가구매 비용
     total_cost = Column(Float, nullable=True, default=0.0)  # 총 가구매 비용 (calculated_cost × quantity)
 

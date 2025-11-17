@@ -261,7 +261,7 @@ class FakePurchaseUpdate(BaseModel):
 class FakePurchaseResponse(FakePurchaseBase):
     """Schema for fake purchase record response"""
     id: int
-    calculated_cost: float = Field(description="Calculated cost per unit: (price × 20.5%) + 4500")
+    calculated_cost: float = Field(description="Calculated cost per unit: (price × 12%) + 4500")
     total_cost: float = Field(description="Total cost: calculated_cost × quantity")
     created_at: datetime
     updated_at: datetime

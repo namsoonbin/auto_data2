@@ -8,6 +8,7 @@ import logging
 
 from models.schemas import MetricsResponse, DailyMetric, ProductMetric, SummaryResponse
 from services.database import get_db, IntegratedRecord, FakePurchase
+from services.adjustment_service import build_fake_purchase_adjustments, apply_fake_purchase_adjustment
 from models.auth import User, Tenant
 from auth.dependencies import get_current_user, get_current_tenant
 
@@ -46,63 +47,16 @@ async def get_metrics(
 
     records = query.all()
 
-    # 가구매 조정 로직
-    fake_purchase_adjustments = {}  # {(date, option_id): {sales_deduction, quantity_deduction, cost_saved}}
-
-    # IntegratedRecord에서 단위당 비용 정보를 미리 조회
-    unit_cost_map = {}  # {(date, option_id): (cost_price, fee_amount, vat)}
-    for record in records:
-        key = (record.date, record.option_id)
-        new_value = (record.cost_price or 0, record.fee_amount or 0, record.vat or 0)
-
-        # 중복 감지 및 로깅
-        if key in unit_cost_map:
-            logger.warning(
-                f"중복 레코드 발견: date={record.date}, option_id={record.option_id}, "
-                f"tenant_id={record.tenant_id}, 기존 비용={unit_cost_map[key]}, 새 비용={new_value}"
-            )
-
-        unit_cost_map[key] = new_value
-
-    if include_fake_purchase_adjustment:
-        # Query fake purchases for the same date range
-        fake_query = db.query(FakePurchase).filter(FakePurchase.tenant_id == current_tenant.id)
-
-        if start_date:
-            fake_query = fake_query.filter(FakePurchase.date >= start_date)
-        if end_date:
-            fake_query = fake_query.filter(FakePurchase.date <= end_date)
-        if product:
-            fake_query = fake_query.filter(FakePurchase.product_name.like(f"%{product}%"))
-
-        fake_purchases = fake_query.all()
-
-        # Build adjustments dictionary
-        for fp in fake_purchases:
-            key = (fp.date, fp.option_id)
-
-            # Calculate sales deduction (quantity × unit_price)
-            sales_deduction = (fp.quantity or 0) * (fp.unit_price or 0)
-
-            # Calculate cost saved (가구매는 실제로 비용이 발생하지 않았으므로)
-            # 비용 절감 = 가구매 수량 × (도매가 + 수수료 + 부가세)
-            cost_saved = 0
-            if key in unit_cost_map:
-                cost_price, fee_amount, vat = unit_cost_map[key]
-                unit_cost = cost_price + fee_amount + vat
-                cost_saved = (fp.quantity or 0) * unit_cost
-            else:
-                # 가구매가 존재하지 않는 IntegratedRecord를 참조
-                logger.warning(
-                    f"FakePurchase가 존재하지 않는 레코드 참조: date={fp.date}, "
-                    f"option_id={fp.option_id}, product_name={fp.product_name}"
-                )
-
-            fake_purchase_adjustments[key] = {
-                'sales_deduction': sales_deduction,
-                'quantity_deduction': fp.quantity or 0,
-                'cost_saved': cost_saved  # 실제로 지불하지 않은 비용 (이익에 더해져야 함)
-            }
+    # 가구매 조정 로직 (서비스 함수 사용)
+    unit_cost_map, fake_purchase_adjustments = build_fake_purchase_adjustments(
+        db=db,
+        tenant_id=current_tenant.id,
+        records=records,
+        start_date=start_date,
+        end_date=end_date,
+        product=product,
+        include_adjustment=include_fake_purchase_adjustment
+    )
 
     if not records:
         return MetricsResponse(
@@ -530,59 +484,18 @@ async def get_product_trend(
             "daily_trend": []
         }
 
-    # Build fake purchase adjustments dictionary
-    fake_purchase_adjustments = {}
-
-    # IntegratedRecord에서 단위당 비용 정보를 미리 조회
-    unit_cost_map = {}  # {(date, option_id): (cost_price, fee_amount, vat)}
-    for record in records:
-        key = (record.date, record.option_id)
-        new_value = (record.cost_price or 0, record.fee_amount or 0, record.vat or 0)
-
-        # 중복 감지 및 로깅
-        if key in unit_cost_map:
-            logger.warning(
-                f"중복 레코드 발견: date={record.date}, option_id={record.option_id}, "
-                f"tenant_id={record.tenant_id}, 기존 비용={unit_cost_map[key]}, 새 비용={new_value}"
-            )
-
-        unit_cost_map[key] = new_value
-
-    if include_fake_purchase_adjustment:
-        fake_query = db.query(FakePurchase).filter(FakePurchase.tenant_id == current_tenant.id)
-        fake_query = fake_query.filter(FakePurchase.product_name == product_name)
-
-        if option_id:
-            fake_query = fake_query.filter(FakePurchase.option_id == option_id)
-        if start_date:
-            fake_query = fake_query.filter(FakePurchase.date >= start_date)
-        if end_date:
-            fake_query = fake_query.filter(FakePurchase.date <= end_date)
-
-        fake_purchases = fake_query.all()
-
-        for fp in fake_purchases:
-            key = (fp.date, fp.option_id)
-            sales_deduction = (fp.quantity or 0) * (fp.unit_price or 0)
-
-            # Calculate cost saved (가구매는 실제로 비용이 발생하지 않았으므로)
-            cost_saved = 0
-            if key in unit_cost_map:
-                cost_price, fee_amount, vat = unit_cost_map[key]
-                unit_cost = cost_price + fee_amount + vat
-                cost_saved = (fp.quantity or 0) * unit_cost
-            else:
-                # 가구매가 존재하지 않는 IntegratedRecord를 참조
-                logger.warning(
-                    f"FakePurchase가 존재하지 않는 레코드 참조: date={fp.date}, "
-                    f"option_id={fp.option_id}, product_name={fp.product_name}"
-                )
-
-            fake_purchase_adjustments[key] = {
-                'sales_deduction': sales_deduction,
-                'quantity_deduction': fp.quantity or 0,
-                'cost_saved': cost_saved
-            }
+    # 가구매 조정 로직 (서비스 함수 사용)
+    unit_cost_map, fake_purchase_adjustments = build_fake_purchase_adjustments(
+        db=db,
+        tenant_id=current_tenant.id,
+        records=records,
+        start_date=start_date,
+        end_date=end_date,
+        product=product_name,
+        option_id=option_id,
+        include_adjustment=include_fake_purchase_adjustment,
+        exact_match=True  # product_name을 정확히 일치
+    )
 
     # Group by date and sum values
     daily_metrics = {}
