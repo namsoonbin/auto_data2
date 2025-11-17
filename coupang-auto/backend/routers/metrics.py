@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional, List
 from sqlalchemy import func, and_
 from sqlalchemy.orm import Session
+import logging
 
 from models.schemas import MetricsResponse, DailyMetric, ProductMetric, SummaryResponse
 from services.database import get_db, IntegratedRecord, FakePurchase
@@ -11,6 +12,7 @@ from models.auth import User, Tenant
 from auth.dependencies import get_current_user, get_current_tenant
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/metrics", response_model=MetricsResponse)
@@ -51,7 +53,16 @@ async def get_metrics(
     unit_cost_map = {}  # {(date, option_id): (cost_price, fee_amount, vat)}
     for record in records:
         key = (record.date, record.option_id)
-        unit_cost_map[key] = (record.cost_price or 0, record.fee_amount or 0, record.vat or 0)
+        new_value = (record.cost_price or 0, record.fee_amount or 0, record.vat or 0)
+
+        # 중복 감지 및 로깅
+        if key in unit_cost_map:
+            logger.warning(
+                f"중복 레코드 발견: date={record.date}, option_id={record.option_id}, "
+                f"tenant_id={record.tenant_id}, 기존 비용={unit_cost_map[key]}, 새 비용={new_value}"
+            )
+
+        unit_cost_map[key] = new_value
 
     if include_fake_purchase_adjustment:
         # Query fake purchases for the same date range
@@ -80,6 +91,12 @@ async def get_metrics(
                 cost_price, fee_amount, vat = unit_cost_map[key]
                 unit_cost = cost_price + fee_amount + vat
                 cost_saved = (fp.quantity or 0) * unit_cost
+            else:
+                # 가구매가 존재하지 않는 IntegratedRecord를 참조
+                logger.warning(
+                    f"FakePurchase가 존재하지 않는 레코드 참조: date={fp.date}, "
+                    f"option_id={fp.option_id}, product_name={fp.product_name}"
+                )
 
             fake_purchase_adjustments[key] = {
                 'sales_deduction': sales_deduction,
@@ -124,6 +141,14 @@ async def get_metrics(
         # Adjust sales and quantity (차감)
         adjusted_sales = record.sales_amount - sales_deduction
         adjusted_quantity = record.sales_quantity - quantity_deduction
+
+        # 음수 수량 검증 (가구매 수량이 실제 판매 초과)
+        if adjusted_quantity < 0:
+            logger.warning(
+                f"음수 수량 발생: date={record.date}, option_id={record.option_id}, "
+                f"sales_quantity={record.sales_quantity}, quantity_deduction={quantity_deduction}, "
+                f"adjusted_quantity={adjusted_quantity}"
+            )
 
         # Adjust profit
         # - 매출 감소: sales_deduction 만큼 이익 감소
@@ -182,6 +207,14 @@ async def get_metrics(
             # Adjust values
             adjusted_sales = record.sales_amount - sales_deduction
             adjusted_quantity = record.sales_quantity - quantity_deduction
+
+            # 음수 수량 검증
+            if adjusted_quantity < 0:
+                logger.warning(
+                    f"음수 수량 발생 (option): date={record.date}, option_id={record.option_id}, "
+                    f"sales_quantity={record.sales_quantity}, quantity_deduction={quantity_deduction}"
+                )
+
             adjusted_profit = record.net_profit - sales_deduction + cost_saved
             adjusted_ad_cost = record.ad_cost
             adjusted_total_cost = record.total_cost - cost_saved  # 실제로 지불하지 않은 비용 제외
@@ -222,6 +255,15 @@ async def get_metrics(
             # Adjust values
             adjusted_sales = record.sales_amount - sales_deduction
             adjusted_quantity = record.sales_quantity - quantity_deduction
+
+            # 음수 수량 검증
+            if adjusted_quantity < 0:
+                logger.warning(
+                    f"음수 수량 발생 (product): date={record.date}, option_id={record.option_id}, "
+                    f"product_name={product_name}, sales_quantity={record.sales_quantity}, "
+                    f"quantity_deduction={quantity_deduction}"
+                )
+
             adjusted_profit = record.net_profit - sales_deduction + cost_saved
             adjusted_ad_cost = record.ad_cost
             adjusted_total_cost = record.total_cost - cost_saved  # 실제로 지불하지 않은 비용 제외
@@ -255,13 +297,11 @@ async def get_metrics(
         if metrics['total_sales'] != 0
     ]
 
-    # DEBUG: Show sales values before sorting
-    print(f"\n=== SORTING DEBUG (group_by={group_by}) ===")
-    print(f"Total filtered records: {len(filtered_metrics)}")
-    if len(filtered_metrics) > 0:
-        print("Sales values before sorting (first 10):")
-        for i, m in enumerate(list(filtered_metrics)[:10]):
-            print(f"  {i+1}. {m['product_name'][:30]:30s} - Sales: {m['total_sales']:,.0f}")
+    # 정렬 전 디버그 로깅 (개발 시에만 필요)
+    logger.debug(f"Sorting metrics: group_by={group_by}, filtered_records={len(filtered_metrics)}")
+    if logger.isEnabledFor(logging.DEBUG) and len(filtered_metrics) > 0:
+        top_10 = list(filtered_metrics)[:10]
+        logger.debug(f"Top 10 before sorting: {[(m['product_name'][:30], m['total_sales']) for m in top_10]}")
 
     # Sort products by sales
     sorted_metrics = sorted(
@@ -270,11 +310,10 @@ async def get_metrics(
         reverse=True
     )
 
-    # DEBUG: Show sales values after sorting
-    print("\nSales values after sorting (first 10):")
-    for i, m in enumerate(sorted_metrics[:10]):
-        print(f"  {i+1}. {m['product_name'][:30]:30s} - Sales: {m['total_sales']:,.0f}")
-    print("=== END SORTING DEBUG ===\n")
+    # 정렬 후 디버그 로깅
+    if logger.isEnabledFor(logging.DEBUG) and len(sorted_metrics) > 0:
+        top_10 = sorted_metrics[:10]
+        logger.debug(f"Top 10 after sorting: {[(m['product_name'][:30], m['total_sales']) for m in top_10]}")
 
     by_product = [
         ProductMetric(**metrics)
@@ -498,7 +537,16 @@ async def get_product_trend(
     unit_cost_map = {}  # {(date, option_id): (cost_price, fee_amount, vat)}
     for record in records:
         key = (record.date, record.option_id)
-        unit_cost_map[key] = (record.cost_price or 0, record.fee_amount or 0, record.vat or 0)
+        new_value = (record.cost_price or 0, record.fee_amount or 0, record.vat or 0)
+
+        # 중복 감지 및 로깅
+        if key in unit_cost_map:
+            logger.warning(
+                f"중복 레코드 발견: date={record.date}, option_id={record.option_id}, "
+                f"tenant_id={record.tenant_id}, 기존 비용={unit_cost_map[key]}, 새 비용={new_value}"
+            )
+
+        unit_cost_map[key] = new_value
 
     if include_fake_purchase_adjustment:
         fake_query = db.query(FakePurchase).filter(FakePurchase.tenant_id == current_tenant.id)
@@ -523,6 +571,12 @@ async def get_product_trend(
                 cost_price, fee_amount, vat = unit_cost_map[key]
                 unit_cost = cost_price + fee_amount + vat
                 cost_saved = (fp.quantity or 0) * unit_cost
+            else:
+                # 가구매가 존재하지 않는 IntegratedRecord를 참조
+                logger.warning(
+                    f"FakePurchase가 존재하지 않는 레코드 참조: date={fp.date}, "
+                    f"option_id={fp.option_id}, product_name={fp.product_name}"
+                )
 
             fake_purchase_adjustments[key] = {
                 'sales_deduction': sales_deduction,
@@ -553,6 +607,14 @@ async def get_product_trend(
 
         adjusted_sales = record.sales_amount - sales_deduction
         adjusted_quantity = record.sales_quantity - quantity_deduction
+
+        # 음수 수량 검증
+        if adjusted_quantity < 0:
+            logger.warning(
+                f"음수 수량 발생 (trend): date={record.date}, option_id={record.option_id}, "
+                f"sales_quantity={record.sales_quantity}, quantity_deduction={quantity_deduction}"
+            )
+
         adjusted_profit = record.net_profit - sales_deduction + cost_saved
         adjusted_ad_cost = record.ad_cost
 
