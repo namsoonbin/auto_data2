@@ -88,9 +88,36 @@ async def create_fake_purchase(
     """
     가구매 레코드 생성
 
-    Validates:
-        - option_id, date combination is unique for tenant
-        - quantity is non-negative
+    가구매(Fake Purchase)는 쿠팡 파트너스 시스템의 특성상 발생하는 허위 주문을
+    기록하여 실제 판매 수치를 정확하게 계산하기 위한 기능입니다.
+
+    Workflow:
+        1. 동일 tenant_id, option_id, date 조합의 중복 체크
+        2. product_name, option_name 자동 채우기 (IntegratedRecord에서 조회)
+        3. 가구매 비용 자동 계산 (단가 × 12% + 4500원)
+        4. 레코드 저장
+
+    Args:
+        fake_purchase: FakePurchaseCreate
+            - option_id: 상품 옵션 ID (필수)
+            - date: 가구매 발생 날짜 (필수)
+            - quantity: 가구매 수량 (필수, 0 이상)
+            - unit_price: 상품 단가 (선택, IntegratedRecord에서 자동 조회 가능)
+            - product_name: 상품명 (선택, IntegratedRecord에서 자동 채우기)
+            - option_name: 옵션명 (선택, IntegratedRecord에서 자동 채우기)
+            - notes: 메모 (선택)
+
+    Returns:
+        FakePurchaseResponse: 생성된 가구매 레코드 (calculated_cost, total_cost 포함)
+
+    Raises:
+        HTTPException 400: 동일한 (tenant_id, option_id, date) 레코드가 이미 존재
+        HTTPException 400: IntegratedRecord에 없는 option_id이고 product_name 미제공
+        HTTPException 500: 데이터베이스 저장 실패
+
+    Validations:
+        - (tenant_id, option_id, date) 조합이 고유해야 함
+        - quantity는 0 이상이어야 함
     """
     # Check if record already exists for this tenant, option_id, and date
     existing = db.query(FakePurchase).filter(

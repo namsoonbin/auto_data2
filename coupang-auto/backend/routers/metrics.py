@@ -28,11 +28,41 @@ async def get_metrics(
     current_user: User = Depends(get_current_user),
     current_tenant: Tenant = Depends(get_current_tenant)
 ):
-    """Get performance metrics for a date range
+    """
+    판매 성과 메트릭 조회 및 분석
+
+    통합 데이터(IntegratedRecord)에서 일별/상품별 판매 성과를 집계하고 분석합니다.
+    가구매 조정 기능을 통해 실제 판매 수치를 정확하게 계산할 수 있습니다.
 
     Args:
-        group_by: 'option' (default) - group by option_id, 'product' - group by product_name
-        include_fake_purchase_adjustment: If True, adjust metrics by deducting fake purchases
+        start_date: 조회 시작일 (없으면 전체 기간)
+        end_date: 조회 종료일 (없으면 전체 기간)
+        product: 상품명 필터 (부분 일치 검색)
+        group_by: 그룹핑 방식
+            - 'option': 옵션별 개별 표시 (기본값)
+            - 'product': 상품명별 통합 표시
+        include_fake_purchase_adjustment: 가구매 조정 포함 여부
+            - False (기본값): 원본 데이터 그대로 사용
+            - True: 가구매 수량/매출을 차감하고 비용 절감분을 이익에 반영
+
+    Returns:
+        MetricsResponse:
+            - period: 조회 기간
+            - total_sales: 총 매출액
+            - total_profit: 총 순이익
+            - total_ad_cost: 총 광고비
+            - total_quantity: 총 판매 수량
+            - avg_margin_rate: 평균 마진율 (%)
+            - daily_trend: 일별 추이 데이터
+            - by_product: 상품별/옵션별 집계 데이터
+
+    Business Logic:
+        가구매 조정 시 각 레코드에 대해:
+        1. 매출 조정: sales_amount - (가구매_수량 × 단가)
+        2. 수량 조정: sales_quantity - 가구매_수량
+        3. 이익 조정: net_profit - 매출차감 + 비용절감
+           - 비용절감 = 가구매_수량 × (도매가 + 수수료 + 부가세)
+           - 가구매는 실제 비용 발생 없이 재고 복원되므로 비용 절감 효과
     """
 
     # Build query - filter by tenant
