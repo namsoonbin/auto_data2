@@ -11,6 +11,7 @@ from services.database import get_db, IntegratedRecord, FakePurchase
 from services.adjustment_service import build_fake_purchase_adjustments, apply_fake_purchase_adjustment
 from models.auth import User, Tenant
 from auth.dependencies import get_current_user, get_current_tenant
+from utils.query_helpers import escape_like_pattern
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ async def get_metrics(
     if end_date:
         query = query.filter(IntegratedRecord.date <= end_date)
     if product:
-        query = query.filter(IntegratedRecord.product_name.like(f"%{product}%"))
+        query = query.filter(IntegratedRecord.product_name.like(f"%{escape_like_pattern(product)}%"))
 
     records = query.all()
 

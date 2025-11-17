@@ -13,6 +13,7 @@ from models.schemas import (
     MarginCreate, MarginUpdate, MarginResponse,
     MarginListResponse, UnmatchedProductsResponse, UnmatchedProduct
 )
+from utils.query_helpers import escape_like_pattern
 from models.auth import User, Tenant
 from services.database import get_db, ProductMargin, IntegratedRecord
 from auth.dependencies import get_current_user, get_current_tenant
@@ -47,7 +48,7 @@ async def get_all_margins(
 
     # Apply filters
     if product_name:
-        query = query.filter(ProductMargin.product_name.like(f"%{product_name}%"))
+        query = query.filter(ProductMargin.product_name.like(f"%{escape_like_pattern(product_name)}%"))
 
     if option_id:
         query = query.filter(ProductMargin.option_id == option_id)

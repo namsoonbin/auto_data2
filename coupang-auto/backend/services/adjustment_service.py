@@ -11,6 +11,7 @@ import logging
 
 from sqlalchemy.orm import Session
 from services.database import IntegratedRecord, FakePurchase
+from utils.query_helpers import escape_like_pattern
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ def build_fake_purchase_adjustments(
         if exact_match:
             fake_query = fake_query.filter(FakePurchase.product_name == product)
         else:
-            fake_query = fake_query.filter(FakePurchase.product_name.like(f"%{product}%"))
+            fake_query = fake_query.filter(FakePurchase.product_name.like(f"%{escape_like_pattern(product)}%"))
     if option_id:
         fake_query = fake_query.filter(FakePurchase.option_id == option_id)
 

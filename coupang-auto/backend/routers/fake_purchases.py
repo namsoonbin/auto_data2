@@ -12,6 +12,7 @@ from models.schemas import (
 from models.auth import User, Tenant
 from services.database import get_db, FakePurchase, IntegratedRecord
 from auth.dependencies import get_current_user, get_current_tenant
+from utils.query_helpers import escape_like_pattern
 
 router = APIRouter()
 
@@ -49,7 +50,7 @@ async def get_fake_purchases(
         query = query.filter(FakePurchase.date <= end_date)
 
     if product_name:
-        query = query.filter(FakePurchase.product_name.like(f"%{product_name}%"))
+        query = query.filter(FakePurchase.product_name.like(f"%{escape_like_pattern(product_name)}%"))
 
     if option_id:
         query = query.filter(FakePurchase.option_id == option_id)

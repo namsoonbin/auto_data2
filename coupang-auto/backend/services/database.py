@@ -65,7 +65,7 @@ class IntegratedRecord(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(UUID(as_uuid=True), ForeignKey('tenants.id'), nullable=True, index=True)  # Nullable for migration
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey('tenants.id'), nullable=False, index=True)
     option_id = Column(BigInteger, nullable=False, index=True)
 
     # Basic info
@@ -162,7 +162,7 @@ class ProductMargin(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(UUID(as_uuid=True), ForeignKey('tenants.id'), nullable=True, index=True)  # Nullable for migration
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey('tenants.id'), nullable=False, index=True)
     option_id = Column(BigInteger, nullable=False, index=True)
     product_name = Column(String, nullable=False, index=True)
     option_name = Column(String)
@@ -187,9 +187,12 @@ class ProductMargin(Base):
 class UploadHistory(Base):
     """Track file upload history"""
     __tablename__ = "upload_history"
+    __table_args__ = (
+        Index('idx_upload_tenant_date', 'tenant_id', 'uploaded_at'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(UUID(as_uuid=True), ForeignKey('tenants.id'), nullable=True, index=True)  # Nullable for migration
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey('tenants.id'), nullable=False, index=True)
     uploaded_at = Column(DateTime, default=datetime.now, nullable=False, index=True)
 
     # File information
