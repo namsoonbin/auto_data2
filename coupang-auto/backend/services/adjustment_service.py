@@ -47,7 +47,8 @@ def build_fake_purchase_adjustments(
         - fake_purchase_adjustments: {(date, option_id): {
             'sales_deduction': float,
             'quantity_deduction': int,
-            'cost_saved': float
+            'cost_saved': float,
+            'fake_purchase_cost': float
           }}
 
     Logic:
@@ -58,6 +59,8 @@ def build_fake_purchase_adjustments(
            - quantity_deduction: 가구매 수량 (수량 차감분)
            - cost_saved: 가구매 수량 × (도매가 + 수수료 + 부가세)
              → 가구매는 실제로 비용이 발생하지 않았으므로 절감된 비용
+           - fake_purchase_cost: FakePurchase.total_cost (가구매 서비스 비용)
+             → 광고비 성격의 비용, 순이익에서 차감되어야 함
     """
     # IntegratedRecord에서 단위당 비용 정보를 미리 조회
     unit_cost_map = {}  # {(date, option_id): (cost_price, fee_amount, vat)}
@@ -122,7 +125,8 @@ def build_fake_purchase_adjustments(
         fake_purchase_adjustments[key] = {
             'sales_deduction': sales_deduction,
             'quantity_deduction': fp.quantity or 0,
-            'cost_saved': cost_saved  # 실제로 지불하지 않은 비용 (이익에 더해져야 함)
+            'cost_saved': cost_saved,  # 실제로 지불하지 않은 비용 (이익에 더해져야 함)
+            'fake_purchase_cost': fp.total_cost or 0  # 가구매 서비스 비용 (광고비 성격)
         }
 
     return unit_cost_map, fake_purchase_adjustments

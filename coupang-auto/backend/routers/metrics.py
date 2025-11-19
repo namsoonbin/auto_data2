@@ -64,9 +64,12 @@ async def get_metrics(
         가구매 조정 시 각 레코드에 대해:
         1. 매출 조정: sales_amount - (가구매_수량 × 단가)
         2. 수량 조정: sales_quantity - 가구매_수량
-        3. 이익 조정: net_profit - 매출차감 + 비용절감
+        3. 이익 조정: net_profit - 매출차감 + 비용절감 - 가구매비용
            - 비용절감 = 가구매_수량 × (도매가 + 수수료 + 부가세)
+           - 가구매비용 = (단가 × 12%) + 4,500원 (광고비 성격, 부가세 미적용)
            - 가구매는 실제 비용 발생 없이 재고 복원되므로 비용 절감 효과
+        4. 광고비 조정: ad_cost + 가구매비용
+           - 가구매 서비스 비용을 광고비에 포함
     """
 
     # Build query - filter by tenant
@@ -121,12 +124,13 @@ async def get_metrics(
         sales_deduction = adjustment.get('sales_deduction', 0)
         quantity_deduction = adjustment.get('quantity_deduction', 0)
         cost_saved = adjustment.get('cost_saved', 0)
+        fake_purchase_cost = adjustment.get('fake_purchase_cost', 0)
 
         # Apply adjustments (계산은 한 번만)
         adjusted_sales = record.sales_amount - sales_deduction
         adjusted_quantity = record.sales_quantity - quantity_deduction
-        adjusted_profit = record.net_profit - sales_deduction + cost_saved
-        adjusted_ad_cost = record.ad_cost
+        adjusted_profit = record.net_profit - sales_deduction + cost_saved - fake_purchase_cost
+        adjusted_ad_cost = record.ad_cost + fake_purchase_cost
         adjusted_total_cost = record.total_cost - cost_saved
 
         # 음수 수량 검증 (가구매 수량이 실제 판매 초과)
@@ -503,6 +507,7 @@ async def get_product_trend(
         sales_deduction = adjustment.get('sales_deduction', 0)
         quantity_deduction = adjustment.get('quantity_deduction', 0)
         cost_saved = adjustment.get('cost_saved', 0)
+        fake_purchase_cost = adjustment.get('fake_purchase_cost', 0)
 
         adjusted_sales = record.sales_amount - sales_deduction
         adjusted_quantity = record.sales_quantity - quantity_deduction
@@ -514,8 +519,8 @@ async def get_product_trend(
                 f"sales_quantity={record.sales_quantity}, quantity_deduction={quantity_deduction}"
             )
 
-        adjusted_profit = record.net_profit - sales_deduction + cost_saved
-        adjusted_ad_cost = record.ad_cost
+        adjusted_profit = record.net_profit - sales_deduction + cost_saved - fake_purchase_cost
+        adjusted_ad_cost = record.ad_cost + fake_purchase_cost
 
         daily_metrics[date_key]['total_sales'] += adjusted_sales
         daily_metrics[date_key]['total_profit'] += adjusted_profit
