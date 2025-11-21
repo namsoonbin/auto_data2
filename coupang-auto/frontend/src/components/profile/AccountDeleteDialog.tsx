@@ -15,6 +15,7 @@ import { Checkbox } from '../ui/checkbox';
 import { AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { Alert, AlertDescription } from '../ui/alert';
 import axios from 'axios';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -26,6 +27,7 @@ interface AccountDeleteDialogProps {
 
 function AccountDeleteDialog({ open, onOpenChange, userRole }: AccountDeleteDialogProps) {
   const navigate = useNavigate();
+  const { theme } = useTheme();
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -92,22 +94,33 @@ function AccountDeleteDialog({ open, onOpenChange, userRole }: AccountDeleteDial
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className={`sm:max-w-md ${
+        theme === 'dark' ? 'bg-[#1a1d23] border-gray-800' : 'bg-white border-gray-200'
+      }`}>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-red-600">
+          <DialogTitle className={`flex items-center gap-2 ${
+            theme === 'dark' ? 'text-red-400' : 'text-red-600'
+          }`}>
             <AlertTriangle className="size-5" />
             계정 삭제
           </DialogTitle>
-          <DialogDescription className="text-gray-600">
+          <DialogDescription className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
             이 작업은 되돌릴 수 없습니다. 신중하게 진행해주세요.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           {/* 경고 메시지 */}
-          <Alert className="bg-red-50 border-red-200">
-            <AlertTriangle className="size-4 text-red-600" />
-            <AlertDescription className="text-red-800 text-sm ml-2">
+          <Alert className={theme === 'dark'
+            ? 'bg-red-500/10 border-red-500/30'
+            : 'bg-red-50 border-red-200'
+          }>
+            <AlertTriangle className={`size-4 ${
+              theme === 'dark' ? 'text-red-400' : 'text-red-600'
+            }`} />
+            <AlertDescription className={`text-sm ml-2 ${
+              theme === 'dark' ? 'text-red-300' : 'text-red-800'
+            }`}>
               {isOwner ? (
                 <>
                   <strong>Owner 계정 삭제 시:</strong>
@@ -132,14 +145,18 @@ function AccountDeleteDialog({ open, onOpenChange, userRole }: AccountDeleteDial
 
           {/* 에러 메시지 */}
           {localError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+            <div className={`p-3 rounded-lg text-sm ${
+              theme === 'dark'
+                ? 'bg-red-500/10 border border-red-500/30 text-red-400'
+                : 'bg-red-50 border border-red-200 text-red-600'
+            }`}>
               {localError}
             </div>
           )}
 
           {/* 비밀번호 입력 */}
           <div className="space-y-2">
-            <Label htmlFor="password" className="text-gray-700">
+            <Label htmlFor="password" className={theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
               비밀번호 확인
             </Label>
             <div className="relative">
@@ -148,41 +165,58 @@ function AccountDeleteDialog({ open, onOpenChange, userRole }: AccountDeleteDial
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="pr-10"
+                className={`pr-10 ${theme === 'dark'
+                  ? 'bg-gray-900/50 border-gray-700 text-white placeholder:text-gray-500 focus:border-red-500/50'
+                  : ''
+                }`}
                 disabled={loading}
                 placeholder="현재 비밀번호를 입력하세요"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                className={`absolute right-3 top-1/2 -translate-y-1/2 transition-colors ${
+                  theme === 'dark'
+                    ? 'text-gray-500 hover:text-red-400'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
                 disabled={loading}
+                aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
+                aria-pressed={showPassword}
               >
                 {showPassword ? (
-                  <EyeOff className="w-4 h-4" />
+                  <EyeOff className="w-4 h-4" aria-hidden="true" />
                 ) : (
-                  <Eye className="w-4 h-4" />
+                  <Eye className="w-4 h-4" aria-hidden="true" />
                 )}
               </button>
             </div>
           </div>
 
           {/* 확인 체크박스 */}
-          <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <div className={`flex items-start gap-3 p-3 rounded-lg border ${
+            theme === 'dark'
+              ? 'bg-gray-900/50 border-gray-700'
+              : 'bg-gray-50 border-gray-200'
+          }`}>
             <Checkbox
               id="confirm"
               checked={confirmed}
-              onCheckedChange={(checked) => setConfirmed(checked as boolean)}
+              onCheckedChange={(checked) => setConfirmed(checked === true)}
               disabled={loading}
               className="mt-0.5"
             />
             <label
               htmlFor="confirm"
-              className="text-sm text-gray-700 cursor-pointer leading-relaxed"
+              className={`text-sm cursor-pointer leading-relaxed ${
+                theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+              }`}
             >
               위의 내용을 이해했으며, 계정 삭제에 동의합니다.
               {isOwner && (
-                <span className="block mt-1 text-red-600 font-medium">
+                <span className={`block mt-1 font-medium ${
+                  theme === 'dark' ? 'text-red-400' : 'text-red-600'
+                }`}>
                   모든 데이터가 영구적으로 삭제됨을 확인합니다.
                 </span>
               )}
@@ -194,13 +228,20 @@ function AccountDeleteDialog({ open, onOpenChange, userRole }: AccountDeleteDial
           <Button
             onClick={() => onOpenChange(false)}
             variant="outline"
+            className={theme === 'dark'
+              ? 'bg-gray-900/50 border-gray-700 hover:border-gray-600 hover:bg-gray-800 text-gray-300 hover:text-white'
+              : ''
+            }
             disabled={loading}
           >
             취소
           </Button>
           <Button
             onClick={handleAccountDelete}
-            className="bg-red-600 hover:bg-red-700 text-white"
+            className={theme === 'dark'
+              ? 'bg-gradient-to-br from-red-500/20 to-red-500/10 hover:from-red-500/30 hover:to-red-500/20 text-red-400 border border-red-500/30 hover:shadow-[0_0_20px_rgba(239,68,68,0.4)]'
+              : 'bg-red-600 hover:bg-red-700 text-white'
+            }
             disabled={loading || !password || !confirmed}
           >
             {loading ? '삭제 중...' : '계정 삭제'}

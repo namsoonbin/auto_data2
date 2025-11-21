@@ -218,6 +218,7 @@ async def get_metrics(
             del metrics['option_names']
 
     # Calculate margin rates for daily metrics
+    # 일별 순이익률 = (일별 순이익 / 일별 매출) × 100
     for metrics in daily_metrics.values():
         if metrics['total_sales'] > 0:
             metrics['margin_rate'] = (metrics['total_profit'] / metrics['total_sales']) * 100
@@ -229,6 +230,20 @@ async def get_metrics(
     ]
 
     # Calculate margin rate, cost rate, ad cost rate for product metrics
+    #
+    # 마진율 계산 공식:
+    # - margin_rate: 순이익률 = (순이익 / 매출) × 100
+    #   → 최종적으로 남는 이익의 비율 (모든 비용 차감 후)
+    #
+    # - cost_rate: 원가이익률 = ((매출 - 총비용) / 매출) × 100
+    #   → total_cost에는 원가 + 수수료 + 부가세 + 배송비가 포함됨
+    #   → 광고비를 제외한 비용 차감 후 남는 이익률
+    #
+    # - ad_cost_rate: 광고비율 = ((광고비 × 1.1) / 매출) × 100
+    #   → 1.1 = 부가세 10% 포함
+    #   → 매출 대비 광고비 지출 비율
+    #
+    # 주의: margin_rate = cost_rate - ad_cost_rate 관계 성립
     for metrics in product_metrics.values():
         if metrics['total_sales'] != 0:
             metrics['margin_rate'] = (metrics['total_profit'] / metrics['total_sales']) * 100

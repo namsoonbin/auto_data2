@@ -1,4 +1,6 @@
 import React, { useState, useEffect, forwardRef } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
+import DashboardPageRedesign from './DashboardPageRedesign';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -143,6 +145,14 @@ const renderCustomHeader = ({
 );
 
 function DashboardPage() {
+  const { theme } = useTheme();
+
+  // Dark mode: 새 디자인 사용
+  if (theme === 'dark') {
+    return <DashboardPageRedesign />;
+  }
+
+  // Light mode: 기존 디자인 사용
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<MetricsSummary | null>(null);
@@ -371,7 +381,7 @@ function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+    <div className="min-h-screen bg-gray-50 p-4">
       <div className="max-w-7xl mx-auto">
         {/* 헤더 */}
         <div className="mb-8">
@@ -562,7 +572,7 @@ function DashboardPage() {
                     <TableBody>
                       {metrics.by_product.map((product, index) => (
                         <TableRow
-                          key={product.option_id === 0 ? `product-${product.product_name}` : `option-${product.option_id}`}
+                          key={product.option_id === 0 ? `product-${index}-${product.product_name}` : `option-${product.option_id}`}
                           onClick={() => handleProductClick(product)}
                           className="cursor-pointer hover:bg-gray-100 transition-colors"
                         >

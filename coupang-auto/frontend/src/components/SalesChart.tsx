@@ -3,6 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Card } from './ui/card';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
+import { useTheme } from '../contexts/ThemeContext';
 
 // Interfaces
 interface DailyData {
@@ -52,19 +53,27 @@ const formatCurrency = (value: number) => {
 };
 
 // 범례 아이템 컴포넌트
-function LegendItem({ color, name, total }: LegendItemProps) {
+function LegendItem({ color, name, total, theme }: LegendItemProps & { theme: 'dark' | 'light' }) {
   const isQuantity = name.includes('판매량');
   return (
-    <div className="flex items-center gap-1.5 min-w-[160px]">
+    <div className="flex items-center gap-2 min-w-[160px] group">
       <div
-        className="w-4 h-4 rounded-full flex-shrink-0"
+        className={`w-3 h-3 rounded-sm flex-shrink-0 transition-all ${
+          theme === 'dark'
+            ? 'shadow-[0_0_8px_rgba(6,182,212,0.4)] group-hover:shadow-[0_0_12px_rgba(6,182,212,0.6)]'
+            : 'shadow-sm group-hover:shadow-md'
+        }`}
         style={{ backgroundColor: color }}
       />
       <div>
-        <p className="text-sm text-muted-foreground opacity-70 whitespace-nowrap">
+        <p className={`text-xs tracking-wide whitespace-nowrap uppercase ${
+          theme === 'dark' ? 'text-gray-500' : 'text-gray-600'
+        }`}>
           {name}
         </p>
-        <p className="text-xl font-semibold whitespace-nowrap">
+        <p className={`text-lg font-bold whitespace-nowrap ${
+          theme === 'dark' ? 'text-white' : 'text-gray-900'
+        }`}>
           {Math.round(total).toLocaleString('ko-KR')}{isQuantity ? '개' : '원'}
         </p>
       </div>
@@ -73,24 +82,35 @@ function LegendItem({ color, name, total }: LegendItemProps) {
 }
 
 // 커스텀 툴팁
-const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload }) => {
+const CustomTooltip: React.FC<CustomTooltipProps & { theme: 'dark' | 'light' }> = ({ active, payload, theme }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     const formattedDate = format(new Date(data.date), 'MM월 dd일', { locale: ko });
 
     return (
-      <Card className="p-4 bg-white border shadow-lg">
-        <p className="text-sm font-semibold mb-2">{formattedDate}</p>
+      <Card className={`p-4 shadow-lg ${
+        theme === 'dark'
+          ? 'bg-[#1a1d23] border-gray-700 shadow-[0_0_30px_rgba(6,182,212,0.3)]'
+          : 'bg-white border-gray-300 shadow-xl'
+      }`}>
+        <p className={`text-sm font-bold mb-3 tracking-wide pb-2 ${
+          theme === 'dark'
+            ? 'text-cyan-400 border-b border-gray-800'
+            : 'text-blue-600 border-b border-gray-200'
+        }`}>
+          {formattedDate}
+        </p>
         {payload.map((entry, index) => {
           const isQuantity = entry.name === '판매량';
           return (
             <div
               key={index}
-              className="flex justify-between gap-4 text-sm mb-1"
-              style={{ color: entry.color }}
+              className="flex justify-between gap-6 text-sm mb-2"
             >
-              <span>{entry.name}:</span>
-              <span className="font-semibold">
+              <span className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'} style={{ color: entry.color }}>
+                {entry.name}:
+              </span>
+              <span className={`font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                 {Math.round(entry.value).toLocaleString('ko-KR')}{isQuantity ? '개' : '원'}
               </span>
             </div>
@@ -103,6 +123,8 @@ const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload }) => {
 };
 
 export default function SalesChart({ data }: SalesChartProps) {
+  const { theme } = useTheme();
+
   // 차트 데이터 변환 (date를 문자열로 변환)
   const chartData: ChartDataPoint[] = data.map((item) => ({
     date: typeof item.date === 'string' ? item.date : item.date.toISOString().split('T')[0],
@@ -128,22 +150,47 @@ export default function SalesChart({ data }: SalesChartProps) {
   const yAxisMax = Math.ceil((maxValue * 1.1) / 1000000) * 1000000;
 
   return (
-    <Card className="p-6 bg-[#fcfcfc] rounded-lg relative min-h-[500px]">
+    <Card className={`p-6 rounded-lg relative min-h-[500px] ${
+      theme === 'dark'
+        ? 'bg-[#1a1d23] border-gray-800 shadow-[0_0_20px_rgba(6,182,212,0.1)]'
+        : 'bg-white border-gray-200 shadow-lg'
+    }`}>
       {/* 차트 제목 */}
-      <h2 className="text-xl font-semibold mb-6 text-black">기간별 매출 추이</h2>
+      <h2 className={`text-xl font-bold mb-6 tracking-wide flex items-center gap-2 ${
+        theme === 'dark' ? 'text-cyan-400' : 'text-blue-600'
+      }`}>
+        <div className={`w-1 h-6 rounded-full ${
+          theme === 'dark'
+            ? 'bg-gradient-to-b from-cyan-400 to-cyan-600'
+            : 'bg-gradient-to-b from-blue-500 to-blue-700'
+        }`} />
+        기간별 매출 추이
+      </h2>
 
       {/* 차트 영역 */}
       <div className="w-full h-[350px] mb-6">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="5 5" stroke="#e0e0e0" vertical={false} />
+            <defs>
+              <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={theme === 'dark' ? '#06b6d4' : '#3b82f6'} stopOpacity={0.3}/>
+                <stop offset="95%" stopColor={theme === 'dark' ? '#06b6d4' : '#3b82f6'} stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke={theme === 'dark' ? '#374151' : '#e5e7eb'}
+              vertical={false}
+              opacity={theme === 'dark' ? 0.3 : 0.5}
+            />
             <XAxis
               dataKey="date"
               axisLine={false}
               tickLine={false}
               tick={{
-                fill: '#999',
-                fontSize: 12,
+                fill: theme === 'dark' ? '#6b7280' : '#6b7280',
+                fontSize: 11,
+                fontFamily: 'inherit',
               }}
               tickFormatter={(value) => {
                 const date = new Date(value);
@@ -154,22 +201,40 @@ export default function SalesChart({ data }: SalesChartProps) {
               axisLine={false}
               tickLine={false}
               tick={{
-                fill: '#999',
-                fontSize: 12,
+                fill: theme === 'dark' ? '#6b7280' : '#6b7280',
+                fontSize: 11,
+                fontFamily: 'inherit',
               }}
               tickFormatter={formatCurrency}
               domain={[0, yAxisMax]}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip
+              content={<CustomTooltip theme={theme} />}
+              cursor={{
+                stroke: theme === 'dark' ? '#06b6d4' : '#3b82f6',
+                strokeWidth: 1,
+                strokeDasharray: '5 5'
+              }}
+            />
 
             {/* 매출 라인 */}
             <Line
               type="monotone"
               dataKey="매출"
-              stroke="#2268D1"
-              strokeWidth={3}
-              dot={{ fill: '#2268D1', r: 4 }}
-              activeDot={{ r: 6 }}
+              stroke={theme === 'dark' ? '#06b6d4' : '#3b82f6'}
+              strokeWidth={2.5}
+              dot={{
+                fill: theme === 'dark' ? '#06b6d4' : '#3b82f6',
+                r: 3,
+                strokeWidth: 2,
+                stroke: theme === 'dark' ? '#0f1115' : '#ffffff'
+              }}
+              activeDot={{
+                r: 5,
+                fill: theme === 'dark' ? '#06b6d4' : '#3b82f6',
+                stroke: '#fff',
+                strokeWidth: 2
+              }}
               name="매출"
             />
 
@@ -177,10 +242,20 @@ export default function SalesChart({ data }: SalesChartProps) {
             <Line
               type="monotone"
               dataKey="광고비"
-              stroke="#FF9800"
-              strokeWidth={3}
-              dot={{ fill: '#FF9800', r: 4 }}
-              activeDot={{ r: 6 }}
+              stroke={theme === 'dark' ? '#f59e0b' : '#f97316'}
+              strokeWidth={2.5}
+              dot={{
+                fill: theme === 'dark' ? '#f59e0b' : '#f97316',
+                r: 3,
+                strokeWidth: 2,
+                stroke: theme === 'dark' ? '#0f1115' : '#ffffff'
+              }}
+              activeDot={{
+                r: 5,
+                fill: theme === 'dark' ? '#f59e0b' : '#f97316',
+                stroke: '#fff',
+                strokeWidth: 2
+              }}
               name="광고비"
             />
 
@@ -188,10 +263,20 @@ export default function SalesChart({ data }: SalesChartProps) {
             <Line
               type="monotone"
               dataKey="순이익"
-              stroke="#14A166"
-              strokeWidth={3}
-              dot={{ fill: '#14A166', r: 4 }}
-              activeDot={{ r: 6 }}
+              stroke={theme === 'dark' ? '#10b981' : '#22c55e'}
+              strokeWidth={2.5}
+              dot={{
+                fill: theme === 'dark' ? '#10b981' : '#22c55e',
+                r: 3,
+                strokeWidth: 2,
+                stroke: theme === 'dark' ? '#0f1115' : '#ffffff'
+              }}
+              activeDot={{
+                r: 5,
+                fill: theme === 'dark' ? '#10b981' : '#22c55e',
+                stroke: '#fff',
+                strokeWidth: 2
+              }}
               name="순이익"
             />
 
@@ -199,10 +284,20 @@ export default function SalesChart({ data }: SalesChartProps) {
             <Line
               type="monotone"
               dataKey="판매량"
-              stroke="#9C27B0"
-              strokeWidth={3}
-              dot={{ fill: '#9C27B0', r: 4 }}
-              activeDot={{ r: 6 }}
+              stroke={theme === 'dark' ? '#a78bfa' : '#8b5cf6'}
+              strokeWidth={2.5}
+              dot={{
+                fill: theme === 'dark' ? '#a78bfa' : '#8b5cf6',
+                r: 3,
+                strokeWidth: 2,
+                stroke: theme === 'dark' ? '#0f1115' : '#ffffff'
+              }}
+              activeDot={{
+                r: 5,
+                fill: theme === 'dark' ? '#a78bfa' : '#8b5cf6',
+                stroke: '#fff',
+                strokeWidth: 2
+              }}
               name="판매량"
             />
           </LineChart>
@@ -210,11 +305,33 @@ export default function SalesChart({ data }: SalesChartProps) {
       </div>
 
       {/* 범례 및 총합 */}
-      <div className="flex gap-5 flex-wrap justify-start pt-4 border-t border-gray-200">
-        <LegendItem color="#2268D1" name="평균 매출" total={totals.매출} />
-        <LegendItem color="#FF9800" name="평균 광고비" total={totals.광고비} />
-        <LegendItem color="#14A166" name="평균 순이익" total={totals.순이익} />
-        <LegendItem color="#9C27B0" name="평균 판매량" total={totals.판매량} />
+      <div className={`flex gap-6 flex-wrap justify-start pt-4 border-t ${
+        theme === 'dark' ? 'border-gray-800' : 'border-gray-200'
+      }`}>
+        <LegendItem
+          color={theme === 'dark' ? '#06b6d4' : '#3b82f6'}
+          name="평균 매출"
+          total={totals.매출}
+          theme={theme}
+        />
+        <LegendItem
+          color={theme === 'dark' ? '#f59e0b' : '#f97316'}
+          name="평균 광고비"
+          total={totals.광고비}
+          theme={theme}
+        />
+        <LegendItem
+          color={theme === 'dark' ? '#10b981' : '#22c55e'}
+          name="평균 순이익"
+          total={totals.순이익}
+          theme={theme}
+        />
+        <LegendItem
+          color={theme === 'dark' ? '#a78bfa' : '#8b5cf6'}
+          name="평균 판매량"
+          total={totals.판매량}
+          theme={theme}
+        />
       </div>
     </Card>
   );

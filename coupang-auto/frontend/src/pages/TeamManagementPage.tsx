@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -62,6 +63,7 @@ interface InviteData {
 
 function TeamManagementPage() {
   const { user } = useAuth();
+  const { theme } = useTheme();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -168,12 +170,21 @@ function TeamManagementPage() {
   };
 
   const getRoleBadgeClass = (role: string) => {
-    const roleColors: Record<string, string> = {
-      owner: 'bg-red-600',
-      admin: 'bg-amber-500',
-      member: 'bg-blue-600',
-    };
-    return roleColors[role] || 'bg-blue-600';
+    if (theme === 'dark') {
+      const darkRoleColors: Record<string, string> = {
+        owner: 'bg-red-500/30 text-red-400 border-red-500/50',
+        admin: 'bg-amber-500/30 text-amber-400 border-amber-500/50',
+        member: 'bg-blue-500/30 text-blue-400 border-blue-500/50',
+      };
+      return darkRoleColors[role] || 'bg-blue-500/30 text-blue-400 border-blue-500/50';
+    } else {
+      const roleColors: Record<string, string> = {
+        owner: 'bg-red-600',
+        admin: 'bg-amber-500',
+        member: 'bg-blue-600',
+      };
+      return roleColors[role] || 'bg-blue-600';
+    }
   };
 
   const formatDate = (dateString: string | null) => {
@@ -188,23 +199,53 @@ function TeamManagementPage() {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className={`min-h-screen p-4 ${
+        theme === 'dark'
+          ? 'bg-[#0f1115]'
+          : 'bg-gray-50'
+      }`}>
+        <div className="flex justify-center items-center min-h-[400px]">
+          <Loader2 className={`h-8 w-8 animate-spin ${
+            theme === 'dark' ? 'text-gray-500' : 'text-muted-foreground'
+          }`} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
-      <div className="max-w-7xl mx-auto">
+    <div className={`min-h-screen p-4 relative ${
+      theme === 'dark'
+        ? 'bg-[#0f1115]'
+        : 'bg-gray-50'
+    }`}>
+      {/* Grain texture overlay for dark mode */}
+      {theme === 'dark' && (
+        <div
+          className="fixed inset-0 opacity-[0.015] pointer-events-none"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+          }}
+        />
+      )}
+
+      <div className="max-w-7xl mx-auto relative z-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-black flex items-center gap-2">
-            <Users className="h-8 w-8" />
+          <h1 className={`flex items-center gap-2 text-3xl font-bold ${
+            theme === 'dark' ? 'text-white' : 'text-black'
+          }`}>
+            <Users className={`h-8 w-8 ${theme === 'dark' ? 'text-cyan-400' : ''}`} />
             팀 관리
           </h1>
           {canInvite && (
-            <Button onClick={() => setInviteDialogOpen(true)}>
+            <Button
+              onClick={() => setInviteDialogOpen(true)}
+              className={theme === 'dark'
+                ? 'bg-gradient-to-br from-cyan-500/20 to-cyan-500/10 hover:from-cyan-500/30 hover:to-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)]'
+                : ''
+              }
+            >
               <UserPlus className="h-4 w-4 mr-2" />
               팀원 초대
             </Button>
@@ -212,39 +253,58 @@ function TeamManagementPage() {
         </div>
 
         {success && (
-          <Alert className="mb-4 bg-green-50 border-green-300">
-            <CheckCircle2 className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-800">{success}</AlertDescription>
+          <Alert className={`mb-4 ${
+            theme === 'dark'
+              ? 'bg-green-950/20 border-green-500/30'
+              : 'bg-green-50 border-green-300'
+          }`}>
+            <CheckCircle2 className={`h-4 w-4 ${
+              theme === 'dark' ? 'text-green-400' : 'text-green-600'
+            }`} />
+            <AlertDescription className={theme === 'dark' ? 'text-green-400' : 'text-green-800'}>{success}</AlertDescription>
           </Alert>
         )}
 
         {error && (
-          <Alert variant="destructive" className="mb-4">
+          <Alert variant="destructive" className={`mb-4 ${
+            theme === 'dark' ? 'bg-red-950/20 border-red-500/30 text-red-400' : ''
+          }`}>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
-        <Card>
+        <Card className={`shadow-lg ${
+          theme === 'dark' ? 'bg-[#1a1d23] border-gray-800' : ''
+        }`}>
           <CardContent className="p-0">
-            <div className="rounded-md border">
+            <div className={`rounded-md border ${
+              theme === 'dark' ? 'border-gray-800' : ''
+            }`}>
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50">
-                    <TableHead className="font-bold">이메일</TableHead>
-                    <TableHead className="font-bold">이름</TableHead>
-                    <TableHead className="font-bold">역할</TableHead>
-                    <TableHead className="font-bold">상태</TableHead>
-                    <TableHead className="font-bold">가입일</TableHead>
-                    <TableHead className="font-bold">마지막 로그인</TableHead>
-                    <TableHead className="text-center font-bold">작업</TableHead>
+                  <TableRow className={theme === 'dark' ? 'bg-gray-900/50 border-gray-700' : 'bg-gray-50'}>
+                    <TableHead className={`font-bold ${theme === 'dark' ? 'text-gray-300' : ''}`}>이메일</TableHead>
+                    <TableHead className={`font-bold ${theme === 'dark' ? 'text-gray-300' : ''}`}>이름</TableHead>
+                    <TableHead className={`font-bold ${theme === 'dark' ? 'text-gray-300' : ''}`}>역할</TableHead>
+                    <TableHead className={`font-bold ${theme === 'dark' ? 'text-gray-300' : ''}`}>상태</TableHead>
+                    <TableHead className={`font-bold ${theme === 'dark' ? 'text-gray-300' : ''}`}>가입일</TableHead>
+                    <TableHead className={`font-bold ${theme === 'dark' ? 'text-gray-300' : ''}`}>마지막 로그인</TableHead>
+                    <TableHead className={`text-center font-bold ${theme === 'dark' ? 'text-gray-300' : ''}`}>작업</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {members.map((member) => (
-                    <TableRow key={member.id} className="hover:bg-gray-50">
-                      <TableCell>{member.email}</TableCell>
-                      <TableCell>{member.full_name || '-'}</TableCell>
+                    <TableRow key={member.id} className={theme === 'dark'
+                      ? 'hover:bg-gray-900/30 border-gray-800'
+                      : 'hover:bg-gray-50'
+                    }>
+                      <TableCell className={theme === 'dark' ? 'text-white' : ''}>
+                        {member.email}
+                      </TableCell>
+                      <TableCell className={theme === 'dark' ? 'text-gray-200' : ''}>
+                        {member.full_name || '-'}
+                      </TableCell>
                       <TableCell>
                         <Badge className={getRoleBadgeClass(member.role)}>
                           {getRoleLabel(member.role)}
@@ -253,19 +313,30 @@ function TeamManagementPage() {
                       <TableCell>
                         <Badge
                           variant={member.is_active ? 'default' : 'secondary'}
-                          className={member.is_active ? 'bg-green-600' : ''}
+                          className={member.is_active
+                            ? (theme === 'dark' ? 'bg-green-500/30 text-green-400 border-green-500/50' : 'bg-green-600')
+                            : (theme === 'dark' ? 'bg-gray-500/30 text-gray-400 border-gray-500/50' : '')
+                          }
                         >
                           {member.is_active ? '활성' : '비활성'}
                         </Badge>
                       </TableCell>
-                      <TableCell>{formatDate(member.created_at)}</TableCell>
-                      <TableCell>{formatDate(member.last_login)}</TableCell>
+                      <TableCell className={theme === 'dark' ? 'text-gray-200' : ''}>
+                        {formatDate(member.created_at)}
+                      </TableCell>
+                      <TableCell className={theme === 'dark' ? 'text-gray-200' : ''}>
+                        {formatDate(member.last_login)}
+                      </TableCell>
                       <TableCell className="text-center">
                         <div className="flex justify-center gap-1">
                           {canEditRole && member.role !== 'owner' && member.id !== user?.id && (
                             <Button
                               size="sm"
                               variant="ghost"
+                              className={theme === 'dark'
+                                ? 'text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                                : ''
+                              }
                               onClick={() => {
                                 setSelectedMember(member);
                                 setNewRole(member.role);
@@ -280,7 +351,10 @@ function TeamManagementPage() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              className={theme === 'dark'
+                                ? 'text-red-400 hover:text-red-300 hover:bg-red-500/10'
+                                : 'text-red-600 hover:text-red-700 hover:bg-red-50'
+                              }
                               onClick={() => {
                                 setSelectedMember(member);
                                 setDeleteDialogOpen(true);
@@ -302,126 +376,221 @@ function TeamManagementPage() {
 
         {/* 팀원 초대 다이얼로그 */}
         <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className={`max-w-md ${
+            theme === 'dark' ? 'bg-[#1a1d23] border-gray-800' : ''
+          }`}>
             <DialogHeader>
-              <DialogTitle>팀원 초대</DialogTitle>
+              <DialogTitle className={theme === 'dark' ? 'text-white' : ''}>
+                팀원 초대
+              </DialogTitle>
             </DialogHeader>
 
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="invite-email">이메일 *</Label>
+                <Label htmlFor="invite-email" className={theme === 'dark' ? 'text-gray-300' : ''}>
+                  이메일 *
+                </Label>
                 <Input
                   id="invite-email"
                   type="email"
                   value={inviteData.email}
                   onChange={(e) => setInviteData({ ...inviteData, email: e.target.value })}
                   placeholder="email@example.com"
+                  className={theme === 'dark'
+                    ? 'bg-gray-900/50 border-gray-700 text-white placeholder:text-gray-500 focus:border-cyan-500/50'
+                    : ''
+                  }
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="invite-name">이름 *</Label>
+                <Label htmlFor="invite-name" className={theme === 'dark' ? 'text-gray-300' : ''}>
+                  이름 *
+                </Label>
                 <Input
                   id="invite-name"
                   value={inviteData.full_name}
                   onChange={(e) => setInviteData({ ...inviteData, full_name: e.target.value })}
                   placeholder="홍길동"
+                  className={theme === 'dark'
+                    ? 'bg-gray-900/50 border-gray-700 text-white placeholder:text-gray-500 focus:border-cyan-500/50'
+                    : ''
+                  }
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="invite-password">초기 비밀번호 *</Label>
+                <Label htmlFor="invite-password" className={theme === 'dark' ? 'text-gray-300' : ''}>
+                  초기 비밀번호 *
+                </Label>
                 <Input
                   id="invite-password"
                   type="password"
                   value={inviteData.password}
                   onChange={(e) => setInviteData({ ...inviteData, password: e.target.value })}
                   placeholder="최소 8자 이상"
+                  className={theme === 'dark'
+                    ? 'bg-gray-900/50 border-gray-700 text-white placeholder:text-gray-500 focus:border-cyan-500/50'
+                    : ''
+                  }
                 />
-                <p className="text-xs text-muted-foreground">최소 8자 이상</p>
+                <p className={`text-xs ${
+                  theme === 'dark' ? 'text-gray-500' : 'text-muted-foreground'
+                }`}>최소 8자 이상</p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="invite-role">역할 *</Label>
+                <Label htmlFor="invite-role" className={theme === 'dark' ? 'text-gray-300' : ''}>
+                  역할 *
+                </Label>
                 <Select
                   value={inviteData.role}
                   onValueChange={(value) => setInviteData({ ...inviteData, role: value as 'admin' | 'member' })}
                 >
-                  <SelectTrigger id="invite-role">
+                  <SelectTrigger id="invite-role" className={theme === 'dark'
+                    ? 'bg-gray-900/50 border-gray-700 text-white focus:border-cyan-500/50'
+                    : ''
+                  }>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="member">멤버</SelectItem>
-                    <SelectItem value="admin">관리자</SelectItem>
+                  <SelectContent className={theme === 'dark' ? 'bg-[#1a1d23] border-gray-800' : ''}>
+                    <SelectItem value="member" className={theme === 'dark' ? 'text-white hover:bg-gray-800' : ''}>
+                      멤버
+                    </SelectItem>
+                    <SelectItem value="admin" className={theme === 'dark' ? 'text-white hover:bg-gray-800' : ''}>
+                      관리자
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setInviteDialogOpen(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setInviteDialogOpen(false)}
+                className={theme === 'dark'
+                  ? 'bg-gray-900/50 border-gray-700 hover:border-cyan-500/50 hover:bg-gray-800 text-gray-300 hover:text-cyan-400'
+                  : ''
+                }
+              >
                 취소
               </Button>
-              <Button onClick={handleInvite}>초대</Button>
+              <Button
+                onClick={handleInvite}
+                className={theme === 'dark'
+                  ? 'bg-gradient-to-br from-cyan-500/20 to-cyan-500/10 hover:from-cyan-500/30 hover:to-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)]'
+                  : ''
+                }
+              >
+                초대
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
         {/* 역할 변경 다이얼로그 */}
         <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-          <DialogContent className="max-w-sm">
+          <DialogContent className={`max-w-sm ${
+            theme === 'dark' ? 'bg-[#1a1d23] border-gray-800' : ''
+          }`}>
             <DialogHeader>
-              <DialogTitle>역할 변경</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className={theme === 'dark' ? 'text-white' : ''}>
+                역할 변경
+              </DialogTitle>
+              <DialogDescription className={theme === 'dark' ? 'text-gray-400' : ''}>
                 {selectedMember?.email}의 역할을 변경합니다
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="change-role">역할</Label>
+                <Label htmlFor="change-role" className={theme === 'dark' ? 'text-gray-300' : ''}>
+                  역할
+                </Label>
                 <Select
                   value={newRole}
                   onValueChange={(value) => setNewRole(value as 'owner' | 'admin' | 'member')}
                 >
-                  <SelectTrigger id="change-role">
+                  <SelectTrigger id="change-role" className={theme === 'dark'
+                    ? 'bg-gray-900/50 border-gray-700 text-white focus:border-cyan-500/50'
+                    : ''
+                  }>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="owner">소유자</SelectItem>
-                    <SelectItem value="admin">관리자</SelectItem>
-                    <SelectItem value="member">멤버</SelectItem>
+                  <SelectContent className={theme === 'dark' ? 'bg-[#1a1d23] border-gray-800' : ''}>
+                    <SelectItem value="owner" className={theme === 'dark' ? 'text-white hover:bg-gray-800' : ''}>
+                      소유자
+                    </SelectItem>
+                    <SelectItem value="admin" className={theme === 'dark' ? 'text-white hover:bg-gray-800' : ''}>
+                      관리자
+                    </SelectItem>
+                    <SelectItem value="member" className={theme === 'dark' ? 'text-white hover:bg-gray-800' : ''}>
+                      멤버
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setRoleDialogOpen(false)}
+                className={theme === 'dark'
+                  ? 'bg-gray-900/50 border-gray-700 hover:border-cyan-500/50 hover:bg-gray-800 text-gray-300 hover:text-cyan-400'
+                  : ''
+                }
+              >
                 취소
               </Button>
-              <Button onClick={handleRoleChange}>변경</Button>
+              <Button
+                onClick={handleRoleChange}
+                className={theme === 'dark'
+                  ? 'bg-gradient-to-br from-cyan-500/20 to-cyan-500/10 hover:from-cyan-500/30 hover:to-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)]'
+                  : ''
+                }
+              >
+                변경
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
         {/* 팀원 제거 확인 다이얼로그 */}
         <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <DialogContent className="max-w-sm">
+          <DialogContent className={`max-w-sm ${
+            theme === 'dark' ? 'bg-[#1a1d23] border-gray-800' : ''
+          }`}>
             <DialogHeader>
-              <DialogTitle>팀원 제거</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className={theme === 'dark' ? 'text-white' : ''}>
+                팀원 제거
+              </DialogTitle>
+              <DialogDescription className={theme === 'dark' ? 'text-gray-400' : ''}>
                 {selectedMember?.email}을(를) 팀에서 제거하시겠습니까?
               </DialogDescription>
             </DialogHeader>
 
-            <p className="text-sm text-red-600 py-4">이 작업은 되돌릴 수 없습니다.</p>
+            <p className={`text-sm py-4 ${
+              theme === 'dark' ? 'text-red-400' : 'text-red-600'
+            }`}>이 작업은 되돌릴 수 없습니다.</p>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setDeleteDialogOpen(false)}
+                className={theme === 'dark'
+                  ? 'bg-gray-900/50 border-gray-700 hover:border-cyan-500/50 hover:bg-gray-800 text-gray-300 hover:text-cyan-400'
+                  : ''
+                }
+              >
                 취소
               </Button>
-              <Button variant="destructive" onClick={handleDelete}>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                className={theme === 'dark' ? 'bg-red-600/80 hover:bg-red-700/80' : ''}
+              >
                 제거
               </Button>
             </DialogFooter>

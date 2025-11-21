@@ -40,6 +40,7 @@ import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import axios from 'axios';
 import { Checkbox } from '../components/ui/checkbox';
+import { useTheme } from '../contexts/ThemeContext';
 
 const API_BASE_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api`;
 
@@ -75,57 +76,76 @@ interface ProductSearchResult {
   option_name?: string;
 }
 
-// Custom input component for DatePicker
-const CustomDateInput = forwardRef<HTMLInputElement, { value?: string; onClick?: () => void }>(
-  ({ value, onClick }, ref) => (
-    <div className="relative">
-      <Input
-        value={value}
-        onClick={onClick}
-        ref={ref}
-        readOnly
-        placeholder="날짜 선택"
-        className="cursor-pointer pr-10"
-      />
-      <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-    </div>
-  )
-);
+// Custom input component for DatePicker - Theme-aware factory
+interface CustomDateInputProps {
+  value?: string;
+  onClick?: () => void;
+  theme?: 'light' | 'dark';
+}
 
-CustomDateInput.displayName = 'CustomDateInput';
-
-// Custom header component for DatePicker
-const renderCustomHeader = ({
-  monthDate,
-  decreaseMonth,
-  increaseMonth,
-  prevMonthButtonDisabled,
-  nextMonthButtonDisabled,
-}: any) => (
-  <div className="flex items-center justify-between px-3 py-2 bg-white">
-    <button
-      onClick={decreaseMonth}
-      disabled={prevMonthButtonDisabled}
-      className="p-1 hover:bg-gray-100 rounded disabled:opacity-50"
-      type="button"
-    >
-      <ChevronLeft className="h-5 w-5" />
-    </button>
-    <span className="font-semibold text-lg">
-      {format(monthDate, 'yyyy년 M월', { locale: ko })}
-    </span>
-    <button
-      onClick={increaseMonth}
-      disabled={nextMonthButtonDisabled}
-      className="p-1 hover:bg-gray-100 rounded disabled:opacity-50"
-      type="button"
-    >
-      <ChevronRight className="h-5 w-5" />
-    </button>
-  </div>
-);
+const createCustomDateInput = (theme: 'light' | 'dark') =>
+  forwardRef<HTMLInputElement, CustomDateInputProps>(
+    ({ value, onClick }, ref) => (
+      <div className="relative">
+        <Input
+          value={value}
+          onClick={onClick}
+          ref={ref}
+          readOnly
+          placeholder="날짜 선택"
+          className={`cursor-pointer pr-10 ${
+            theme === 'dark'
+              ? 'bg-gray-900/50 border-gray-700 text-white placeholder:text-gray-500 focus:border-cyan-500/50'
+              : ''
+          }`}
+        />
+        <Calendar className={`absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none ${
+          theme === 'dark' ? 'text-gray-500' : 'text-muted-foreground'
+        }`} />
+      </div>
+    )
+  );
 
 const FakePurchaseManagementPage: React.FC = () => {
+  const { theme } = useTheme();
+
+  // Custom header component for DatePicker
+  const renderCustomHeader = ({
+    monthDate,
+    decreaseMonth,
+    increaseMonth,
+    prevMonthButtonDisabled,
+    nextMonthButtonDisabled,
+  }: any) => (
+    <div className={`flex items-center justify-between px-3 py-2 ${
+      theme === 'dark' ? 'bg-gray-800' : 'bg-white'
+    }`}>
+      <button
+        onClick={decreaseMonth}
+        disabled={prevMonthButtonDisabled}
+        className={`p-1 rounded disabled:opacity-50 ${
+          theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+        }`}
+        type="button"
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </button>
+      <span className="font-semibold text-lg">
+        {format(monthDate, 'yyyy년 M월', { locale: ko })}
+      </span>
+      <button
+        onClick={increaseMonth}
+        disabled={nextMonthButtonDisabled}
+        className={`p-1 rounded disabled:opacity-50 ${
+          theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+        }`}
+        type="button"
+      >
+        <ChevronRight className="h-5 w-5" />
+      </button>
+    </div>
+  );
+
   const [fakePurchases, setFakePurchases] = useState<FakePurchase[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -509,26 +529,55 @@ const FakePurchaseManagementPage: React.FC = () => {
     }
   };
 
-  return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">가구매 관리</h1>
-          <p className="text-muted-foreground mt-2">
-            가구매 데이터를 관리하고 비용을 추적합니다
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={handleCreate} variant="default">
-            <Plus className="mr-2 h-4 w-4" />
-            가구매 추가
-          </Button>
-        </div>
-      </div>
+  const CustomDateInput = createCustomDateInput(theme);
 
-      {/* Alerts */}
+  return (
+    <div className={`min-h-screen p-4 relative ${
+      theme === 'dark'
+        ? 'bg-[#0f1115]'
+        : 'bg-gray-50'
+    }`}>
+      {/* Grain texture overlay for dark mode */}
+      {theme === 'dark' && (
+        <div
+          className="fixed inset-0 opacity-[0.015] pointer-events-none"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+          }}
+        />
+      )}
+
+      <div className="max-w-7xl mx-auto space-y-6 relative z-10">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className={`text-3xl font-bold ${
+              theme === 'dark' ? 'text-white' : 'text-black'
+            }`}>가구매 관리</h1>
+            <p className={`mt-2 ${
+              theme === 'dark' ? 'text-gray-400' : 'text-muted-foreground'
+            }`}>
+              가구매 데이터를 관리하고 비용을 추적합니다
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleCreate}
+              className={theme === 'dark'
+                ? 'bg-gradient-to-br from-cyan-500/20 to-cyan-500/10 hover:from-cyan-500/30 hover:to-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)]'
+                : ''
+              }
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              가구매 추가
+            </Button>
+          </div>
+        </div>
+
+        {/* Alerts */}
       {error && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className={`${
+          theme === 'dark' ? 'bg-red-950/20 border-red-500/30 text-red-400' : ''
+        }`}>
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>오류</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
@@ -536,21 +585,27 @@ const FakePurchaseManagementPage: React.FC = () => {
       )}
 
       {success && (
-        <Alert>
+        <Alert className={`${
+          theme === 'dark'
+            ? 'bg-cyan-950/20 border-cyan-500/30 text-cyan-400'
+            : ''
+        }`}>
           <AlertTitle>성공</AlertTitle>
           <AlertDescription>{success}</AlertDescription>
         </Alert>
       )}
 
       {/* Filter Card */}
-      <Card>
+      <Card className={`shadow-lg ${
+        theme === 'dark' ? 'bg-[#1a1d23] border-gray-800' : ''
+      }`}>
         <CardHeader>
-          <CardTitle>필터</CardTitle>
+          <CardTitle className={theme === 'dark' ? 'text-white' : ''}>필터</CardTitle>
         </CardHeader>
         <CardContent className="overflow-hidden">
           <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4">
             <div>
-              <Label>기간</Label>
+              <Label className={theme === 'dark' ? 'text-gray-300' : ''}>기간</Label>
               <DatePicker
                 selectsRange
                 startDate={filterDateRange[0]}
@@ -567,15 +622,25 @@ const FakePurchaseManagementPage: React.FC = () => {
               />
             </div>
             <div>
-              <Label>상품명</Label>
+              <Label className={theme === 'dark' ? 'text-gray-300' : ''}>상품명</Label>
               <Input
                 placeholder="상품명으로 검색"
                 value={filterProductName}
                 onChange={(e) => setFilterProductName(e.target.value)}
+                className={theme === 'dark'
+                  ? 'bg-gray-900/50 border-gray-700 text-white placeholder:text-gray-500 focus:border-cyan-500/50'
+                  : ''
+                }
               />
             </div>
             <div className="flex items-end gap-2 flex-shrink-0">
-              <Button onClick={fetchFakePurchases}>
+              <Button
+                onClick={fetchFakePurchases}
+                className={theme === 'dark'
+                  ? 'bg-gradient-to-br from-cyan-500/20 to-cyan-500/10 hover:from-cyan-500/30 hover:to-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)]'
+                  : ''
+                }
+              >
                 <Search className="mr-2 h-4 w-4" />
                 검색
               </Button>
@@ -586,6 +651,10 @@ const FakePurchaseManagementPage: React.FC = () => {
                   setFilterDateRange([null, null]);
                   setFilterProductName('');
                 }}
+                className={theme === 'dark'
+                  ? 'bg-gray-900/50 border-gray-700 hover:border-cyan-500/50 hover:bg-gray-800 text-gray-300 hover:text-cyan-400'
+                  : ''
+                }
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -595,19 +664,36 @@ const FakePurchaseManagementPage: React.FC = () => {
       </Card>
 
       {/* Data Table */}
-      <Card>
+      <Card className={`shadow-lg ${
+        theme === 'dark' ? 'bg-[#1a1d23] border-gray-800' : ''
+      }`}>
         <CardHeader>
           <div className="flex justify-between items-center">
-            <CardTitle>가구매 목록 ({fakePurchases.length}건)</CardTitle>
+            <CardTitle className={theme === 'dark' ? 'text-white' : ''}>
+              가구매 목록 ({fakePurchases.length}건)
+            </CardTitle>
             <div className="flex gap-2">
               {selectedIds.size > 0 && (
-                <Button variant="destructive" size="sm" onClick={handleBatchDelete}>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBatchDelete}
+                  className={theme === 'dark' ? 'bg-red-600/80 hover:bg-red-700/80' : ''}
+                >
                   <Trash2 className="mr-2 h-4 w-4" />
                   선택 삭제 ({selectedIds.size})
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={fetchFakePurchases}>
-                <RefreshCw className="mr-2 h-4 w-4" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchFakePurchases}
+                className={theme === 'dark'
+                  ? 'bg-gray-900/50 border-gray-700 hover:border-cyan-500/50 hover:bg-gray-800 text-gray-300 hover:text-cyan-400'
+                  : ''
+                }
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${theme === 'dark' ? 'text-cyan-400' : ''}`} />
                 새로고침
               </Button>
             </div>
@@ -616,61 +702,78 @@ const FakePurchaseManagementPage: React.FC = () => {
         <CardContent>
           {loading ? (
             <div className="flex justify-center items-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin" />
+              <Loader2 className={`h-8 w-8 animate-spin ${
+                theme === 'dark' ? 'text-gray-500' : ''
+              }`} />
             </div>
           ) : fakePurchases.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className={`text-center py-8 ${
+              theme === 'dark' ? 'text-gray-400' : 'text-muted-foreground'
+            }`}>
               가구매 데이터가 없습니다
             </div>
           ) : (
-            <Table>
+            <div className={`rounded-md border ${
+              theme === 'dark' ? 'border-gray-700' : ''
+            }`}>
+              <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">
+                <TableRow className={theme === 'dark' ? 'bg-gray-900/50 border-gray-700' : ''}>
+                  <TableHead className={`w-12 ${theme === 'dark' ? 'text-gray-300' : ''}`}>
                     <Checkbox
                       checked={selectedIds.size === fakePurchases.length}
                       onCheckedChange={toggleAllSelection}
                     />
                   </TableHead>
-                  <TableHead>날짜</TableHead>
-                  <TableHead>옵션ID</TableHead>
-                  <TableHead>상품정보</TableHead>
-                  <TableHead className="text-right">수량</TableHead>
-                  <TableHead className="text-right">단가</TableHead>
-                  <TableHead className="text-right">단위비용</TableHead>
-                  <TableHead className="text-right">총비용</TableHead>
-                  <TableHead className="text-right">작업</TableHead>
+                  <TableHead className={theme === 'dark' ? 'text-gray-300' : ''}>날짜</TableHead>
+                  <TableHead className={theme === 'dark' ? 'text-gray-300' : ''}>옵션ID</TableHead>
+                  <TableHead className={theme === 'dark' ? 'text-gray-300' : ''}>상품정보</TableHead>
+                  <TableHead className={`text-right ${theme === 'dark' ? 'text-gray-300' : ''}`}>수량</TableHead>
+                  <TableHead className={`text-right ${theme === 'dark' ? 'text-gray-300' : ''}`}>단가</TableHead>
+                  <TableHead className={`text-right ${theme === 'dark' ? 'text-gray-300' : ''}`}>단위비용</TableHead>
+                  <TableHead className={`text-right ${theme === 'dark' ? 'text-gray-300' : ''}`}>총비용</TableHead>
+                  <TableHead className={`text-right ${theme === 'dark' ? 'text-gray-300' : ''}`}>작업</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {fakePurchases.map((fp) => (
-                  <TableRow key={fp.id}>
+                  <TableRow key={fp.id} className={theme === 'dark' ? 'hover:bg-gray-900/30 border-gray-800' : ''}>
                     <TableCell>
                       <Checkbox
                         checked={selectedIds.has(fp.id)}
                         onCheckedChange={() => toggleSelection(fp.id)}
                       />
                     </TableCell>
-                    <TableCell>{fp.date}</TableCell>
-                    <TableCell>{fp.option_id}</TableCell>
+                    <TableCell className={theme === 'dark' ? 'text-gray-200' : ''}>
+                      {fp.date}
+                    </TableCell>
+                    <TableCell className={theme === 'dark' ? 'text-gray-200' : ''}>
+                      {fp.option_id}
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-1">
-                        <div className="font-medium">{fp.product_name}</div>
+                        <div className={`font-medium ${theme === 'dark' ? 'text-white' : ''}`}>
+                          {fp.product_name}
+                        </div>
                         {fp.option_name && (
-                          <div className="text-sm text-muted-foreground">
+                          <div className={`text-sm ${
+                            theme === 'dark' ? 'text-gray-400' : 'text-muted-foreground'
+                          }`}>
                             {fp.option_name}
                           </div>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">{fp.quantity}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className={`text-right ${theme === 'dark' ? 'text-gray-200' : ''}`}>
+                      {fp.quantity}
+                    </TableCell>
+                    <TableCell className={`text-right ${theme === 'dark' ? 'text-cyan-400' : ''}`}>
                       {fp.unit_price.toLocaleString()}원
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className={`text-right ${theme === 'dark' ? 'text-gray-200' : ''}`}>
                       {fp.calculated_cost.toLocaleString()}원
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className={`text-right font-semibold ${theme === 'dark' ? 'text-cyan-400' : ''}`}>
                       {fp.total_cost.toLocaleString()}원
                     </TableCell>
                     <TableCell className="text-right">
@@ -679,6 +782,10 @@ const FakePurchaseManagementPage: React.FC = () => {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleEdit(fp)}
+                          className={theme === 'dark'
+                            ? 'text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10'
+                            : ''
+                          }
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -686,6 +793,10 @@ const FakePurchaseManagementPage: React.FC = () => {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDelete(fp)}
+                          className={theme === 'dark'
+                            ? 'text-red-400 hover:text-red-300 hover:bg-red-500/10'
+                            : ''
+                          }
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -695,6 +806,7 @@ const FakePurchaseManagementPage: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -999,6 +1111,7 @@ const FakePurchaseManagementPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 };

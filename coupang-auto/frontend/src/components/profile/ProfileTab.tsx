@@ -7,6 +7,7 @@ import { Separator } from '../ui/separator';
 import { Mail, User, Calendar, Shield, Activity } from 'lucide-react';
 import axios from 'axios';
 import { User as UserType } from '../../types';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -21,6 +22,7 @@ interface ProfileFormData {
 }
 
 function ProfileTab({ onSuccess, onError }: ProfileTabProps) {
+  const { theme } = useTheme();
   const [profile, setProfile] = useState<UserType | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -98,10 +100,14 @@ function ProfileTab({ onSuccess, onError }: ProfileTabProps) {
 
   if (loading) {
     return (
-      <Card>
+      <Card className={`shadow-lg ${
+        theme === 'dark' ? 'bg-[#1a1d23] border-gray-800' : ''
+      }`}>
         <CardContent className="pt-6">
           <div className="flex justify-center items-center h-32">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${
+              theme === 'dark' ? 'border-cyan-400' : 'border-blue-600'
+            }`}></div>
           </div>
         </CardContent>
       </Card>
@@ -109,18 +115,27 @@ function ProfileTab({ onSuccess, onError }: ProfileTabProps) {
   }
 
   return (
-    <Card className="shadow-lg">
+    <Card className={`shadow-lg ${
+      theme === 'dark' ? 'bg-[#1a1d23] border-gray-800' : ''
+    }`}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>기본 정보</CardTitle>
-            <CardDescription>프로필에 표시될 기본 정보를 관리하세요</CardDescription>
+            <CardTitle className={theme === 'dark' ? 'text-white' : ''}>
+              기본 정보
+            </CardTitle>
+            <CardDescription className={theme === 'dark' ? 'text-gray-400' : ''}>
+              프로필에 표시될 기본 정보를 관리하세요
+            </CardDescription>
           </div>
           <div className="flex gap-2">
             {!editing ? (
               <Button
                 onClick={() => setEditing(true)}
-                className="bg-blue-600 hover:bg-blue-700"
+                className={theme === 'dark'
+                  ? 'bg-gradient-to-br from-cyan-500/20 to-cyan-500/10 hover:from-cyan-500/30 hover:to-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)]'
+                  : 'bg-blue-600 hover:bg-blue-700'
+                }
               >
                 수정
               </Button>
@@ -129,12 +144,19 @@ function ProfileTab({ onSuccess, onError }: ProfileTabProps) {
                 <Button
                   onClick={handleCancel}
                   variant="outline"
+                  className={theme === 'dark'
+                    ? 'bg-gray-900/50 border-gray-700 hover:border-cyan-500/50 hover:bg-gray-800 text-gray-300 hover:text-cyan-400'
+                    : ''
+                  }
                 >
                   취소
                 </Button>
                 <Button
                   onClick={handleSave}
-                  className="bg-blue-600 hover:bg-blue-700"
+                  className={theme === 'dark'
+                    ? 'bg-gradient-to-br from-cyan-500/20 to-cyan-500/10 hover:from-cyan-500/30 hover:to-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)]'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                  }
                 >
                   저장
                 </Button>
@@ -148,8 +170,8 @@ function ProfileTab({ onSuccess, onError }: ProfileTabProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* 이름 */}
           <div className="space-y-2">
-            <Label htmlFor="full_name" className="text-gray-700">
-              이름 <span className="text-red-500">*</span>
+            <Label htmlFor="full_name" className={theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
+              이름 <span className={theme === 'dark' ? 'text-red-400' : 'text-red-500'}>*</span>
             </Label>
             <Input
               id="full_name"
@@ -157,14 +179,17 @@ function ProfileTab({ onSuccess, onError }: ProfileTabProps) {
               placeholder="이름을 입력하세요"
               value={formData.full_name}
               onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-              className="bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+              className={theme === 'dark'
+                ? 'bg-gray-900/50 border-gray-700 text-white placeholder:text-gray-500 focus:border-cyan-500/50'
+                : 'bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500'
+              }
               disabled={!editing}
             />
           </div>
 
           {/* 전화번호 */}
           <div className="space-y-2">
-            <Label htmlFor="phone" className="text-gray-700">
+            <Label htmlFor="phone" className={theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
               전화번호
             </Label>
             <Input
@@ -173,74 +198,121 @@ function ProfileTab({ onSuccess, onError }: ProfileTabProps) {
               placeholder="010-1234-5678"
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              className="bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+              className={theme === 'dark'
+                ? 'bg-gray-900/50 border-gray-700 text-white placeholder:text-gray-500 focus:border-cyan-500/50'
+                : 'bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500'
+              }
               disabled={!editing}
             />
           </div>
         </div>
 
-        <Separator className="my-6" />
+        <Separator className={`my-6 ${theme === 'dark' ? 'bg-gray-800' : ''}`} />
 
         {/* 읽기 전용 정보 */}
         <div className="space-y-4">
-          <h3 className="text-black mb-1">계정 정보</h3>
-          <p className="text-gray-600 text-sm mb-4">계정과 관련된 읽기 전용 정보입니다</p>
+          <h3 className={`mb-1 ${theme === 'dark' ? 'text-white' : 'text-black'}`}>계정 정보</h3>
+          <p className={`text-sm mb-4 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>계정과 관련된 읽기 전용 정보입니다</p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* 이메일 */}
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex items-center gap-4">
-              <div className="bg-blue-100 rounded-full p-3">
-                <Mail className="size-5 text-blue-600" />
+            <div className={`rounded-lg p-4 flex items-center gap-4 ${
+              theme === 'dark'
+                ? 'bg-blue-500/10 border border-blue-500/30'
+                : 'bg-blue-50 border border-blue-100'
+            }`}>
+              <div className={`rounded-full p-3 ${
+                theme === 'dark' ? 'bg-blue-500/20' : 'bg-blue-100'
+              }`}>
+                <Mail className={`size-5 ${
+                  theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
+                }`} />
               </div>
               <div>
-                <p className="text-gray-500 text-sm">이메일</p>
-                <p className="text-black font-medium">{profile?.email || '-'}</p>
+                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>이메일</p>
+                <p className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-black'}`}>{profile?.email || '-'}</p>
               </div>
             </div>
 
             {/* 역할 */}
-            <div className="bg-purple-50 border border-purple-100 rounded-lg p-4 flex items-center gap-4">
-              <div className="bg-purple-100 rounded-full p-3">
-                <Shield className="size-5 text-purple-600" />
+            <div className={`rounded-lg p-4 flex items-center gap-4 ${
+              theme === 'dark'
+                ? 'bg-purple-500/10 border border-purple-500/30'
+                : 'bg-purple-50 border border-purple-100'
+            }`}>
+              <div className={`rounded-full p-3 ${
+                theme === 'dark' ? 'bg-purple-500/20' : 'bg-purple-100'
+              }`}>
+                <Shield className={`size-5 ${
+                  theme === 'dark' ? 'text-purple-400' : 'text-purple-600'
+                }`} />
               </div>
               <div>
-                <p className="text-gray-500 text-sm">역할</p>
-                <p className="text-black font-medium">{getRoleLabel(profile?.role || '')}</p>
+                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>역할</p>
+                <p className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-black'}`}>{getRoleLabel(profile?.role || '')}</p>
               </div>
             </div>
 
             {/* 가입일 */}
-            <div className="bg-green-50 border border-green-100 rounded-lg p-4 flex items-center gap-4">
-              <div className="bg-green-100 rounded-full p-3">
-                <Calendar className="size-5 text-green-600" />
+            <div className={`rounded-lg p-4 flex items-center gap-4 ${
+              theme === 'dark'
+                ? 'bg-green-500/10 border border-green-500/30'
+                : 'bg-green-50 border border-green-100'
+            }`}>
+              <div className={`rounded-full p-3 ${
+                theme === 'dark' ? 'bg-green-500/20' : 'bg-green-100'
+              }`}>
+                <Calendar className={`size-5 ${
+                  theme === 'dark' ? 'text-green-400' : 'text-green-600'
+                }`} />
               </div>
               <div>
-                <p className="text-gray-500 text-sm">가입일</p>
-                <p className="text-black font-medium">{formatDate(profile?.created_at)}</p>
+                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>가입일</p>
+                <p className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-black'}`}>{formatDate(profile?.created_at)}</p>
               </div>
             </div>
 
             {/* 마지막 로그인 */}
-            <div className="bg-orange-50 border border-orange-100 rounded-lg p-4 flex items-center gap-4">
-              <div className="bg-orange-100 rounded-full p-3">
-                <Activity className="size-5 text-orange-600" />
+            <div className={`rounded-lg p-4 flex items-center gap-4 ${
+              theme === 'dark'
+                ? 'bg-orange-500/10 border border-orange-500/30'
+                : 'bg-orange-50 border border-orange-100'
+            }`}>
+              <div className={`rounded-full p-3 ${
+                theme === 'dark' ? 'bg-orange-500/20' : 'bg-orange-100'
+              }`}>
+                <Activity className={`size-5 ${
+                  theme === 'dark' ? 'text-orange-400' : 'text-orange-600'
+                }`} />
               </div>
               <div>
-                <p className="text-gray-500 text-sm">마지막 로그인</p>
-                <p className="text-black font-medium">{formatDate(profile?.last_login)}</p>
+                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>마지막 로그인</p>
+                <p className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-black'}`}>{formatDate(profile?.last_login)}</p>
               </div>
             </div>
           </div>
 
           {/* 계정 상태 */}
-          <div className={`${profile?.is_active ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'} border rounded-lg p-4 flex items-center justify-between`}>
+          <div className={`border rounded-lg p-4 flex items-center justify-between ${
+            profile?.is_active
+              ? (theme === 'dark' ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-100')
+              : (theme === 'dark' ? 'bg-red-500/10 border-red-500/30' : 'bg-red-50 border-red-100')
+          }`}>
             <div className="flex items-center gap-4">
-              <div className={`${profile?.is_active ? 'bg-green-100' : 'bg-red-100'} rounded-full p-3`}>
-                <User className={`size-5 ${profile?.is_active ? 'text-green-600' : 'text-red-600'}`} />
+              <div className={`rounded-full p-3 ${
+                profile?.is_active
+                  ? (theme === 'dark' ? 'bg-green-500/20' : 'bg-green-100')
+                  : (theme === 'dark' ? 'bg-red-500/20' : 'bg-red-100')
+              }`}>
+                <User className={`size-5 ${
+                  profile?.is_active
+                    ? (theme === 'dark' ? 'text-green-400' : 'text-green-600')
+                    : (theme === 'dark' ? 'text-red-400' : 'text-red-600')
+                }`} />
               </div>
               <div>
-                <p className="text-gray-500 text-sm">계정 상태</p>
-                <p className="text-black font-medium">{profile?.is_active ? '활성' : '비활성'}</p>
+                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>계정 상태</p>
+                <p className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-black'}`}>{profile?.is_active ? '활성' : '비활성'}</p>
               </div>
             </div>
           </div>

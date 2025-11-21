@@ -19,6 +19,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import axios from 'axios';
+import { useTheme } from '../contexts/ThemeContext';
 
 const API_BASE_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api`;
 
@@ -32,27 +33,35 @@ interface UploadResult {
   warnings?: string[];
 }
 
-// Custom input component for DatePicker
+// Custom input component for DatePicker - defined as HOC to access theme
 interface CustomDateInputProps {
   value?: string;
   onClick?: () => void;
+  theme?: 'light' | 'dark';
 }
 
-const CustomDateInput = forwardRef<HTMLInputElement, CustomDateInputProps>(
-  ({ value, onClick }, ref) => (
-    <div className="relative">
-      <Input
-        ref={ref}
-        value={value}
-        onClick={onClick}
-        placeholder="데이터 날짜 선택 (필수)"
-        readOnly
-        className="cursor-pointer pr-10 bg-gray-50 border-gray-300"
-      />
-      <CalendarIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
-    </div>
-  )
-);
+const createCustomDateInput = (theme: 'light' | 'dark') =>
+  forwardRef<HTMLInputElement, CustomDateInputProps>(
+    ({ value, onClick }, ref) => (
+      <div className="relative">
+        <Input
+          ref={ref}
+          value={value}
+          onClick={onClick}
+          placeholder="데이터 날짜 선택 (필수)"
+          readOnly
+          className={`cursor-pointer pr-10 ${
+            theme === 'dark'
+              ? 'bg-gray-900/50 border-gray-700 text-white placeholder:text-gray-500'
+              : 'bg-gray-50 border-gray-300'
+          }`}
+        />
+        <CalendarIcon className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none ${
+          theme === 'dark' ? 'text-gray-500' : 'text-gray-500'
+        }`} />
+      </div>
+    )
+  );
 
 // Custom header component for DatePicker
 interface CustomHeaderProps {
@@ -92,6 +101,7 @@ const renderCustomHeader = ({
 );
 
 function HomePage() {
+  const { theme } = useTheme();
   const [salesFile, setSalesFile] = useState<File | null>(null);
   const [adsFile, setAdsFile] = useState<File | null>(null);
   const [dataDate, setDataDate] = useState<Date | null>(null);
@@ -191,42 +201,92 @@ function HomePage() {
   const allFilesSelected = salesFile && adsFile && dataDate;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
-      <div className="max-w-6xl mx-auto">
+    <div className={`min-h-screen p-4 relative ${
+      theme === 'dark'
+        ? 'bg-[#0f1115]'
+        : 'bg-gray-50'
+    }`}>
+      {/* Dark theme grain texture */}
+      {theme === 'dark' && (
+        <div
+          className="fixed inset-0 opacity-[0.015] pointer-events-none"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
+          }}
+        />
+      )}
+
+      <div className="max-w-6xl mx-auto relative z-10">
         {/* 헤더 */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-2">
-            <BarChart3 className="w-8 h-8 text-blue-600" />
-            쿠팡 판매 데이터 통합
+          <h1 className={`text-3xl font-bold mb-2 flex items-center gap-2 ${
+            theme === 'dark'
+              ? 'text-white'
+              : 'text-gray-900'
+          }`}>
+            <BarChart3 className={`w-8 h-8 ${
+              theme === 'dark' ? 'text-cyan-400' : 'text-blue-600'
+            }`} />
+            {theme === 'dark' ? (
+              <>
+                <span className="text-cyan-400">DATA</span>
+                <span className="text-gray-500">///</span>
+                <span className="font-light">UPLOAD</span>
+              </>
+            ) : (
+              '쿠팡 판매 데이터 통합'
+            )}
           </h1>
-          <p className="text-gray-600">
+          <p className={theme === 'dark' ? 'text-gray-400 text-sm' : 'text-gray-600'}>
             판매, 광고 데이터를 업로드하세요. 마진 데이터는 마진 관리 페이지에서 미리 등록된 데이터를 자동으로 불러옵니다.
           </p>
         </div>
 
         {/* Upload Card */}
-        <Card className="mb-6 shadow-lg">
+        <Card className={`mb-6 shadow-lg ${
+          theme === 'dark'
+            ? 'bg-[#1a1d23] border-gray-800'
+            : ''
+        }`}>
           <CardHeader>
-            <CardTitle>파일 업로드</CardTitle>
-            <CardDescription>판매 데이터와 광고 데이터를 선택하여 업로드하세요</CardDescription>
+            <CardTitle className={theme === 'dark' ? 'text-white' : ''}>파일 업로드</CardTitle>
+            <CardDescription className={theme === 'dark' ? 'text-gray-400 text-xs' : ''}>판매 데이터와 광고 데이터를 선택하여 업로드하세요</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               {/* Sales File */}
               <div
                 className={`border-2 rounded-lg p-6 text-center transition-colors ${
-                  salesFile
-                    ? 'bg-green-50 border-green-500'
-                    : 'bg-white border-gray-200 hover:border-gray-300'
+                  theme === 'dark'
+                    ? salesFile
+                      ? 'bg-cyan-500/10 border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.2)]'
+                      : 'bg-gray-900/50 border-gray-700 hover:border-gray-600'
+                    : salesFile
+                      ? 'bg-green-50 border-green-500'
+                      : 'bg-white border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <h3 className="font-semibold text-gray-900 mb-1">Sales Data (판매 데이터)</h3>
-                <p className="text-sm text-gray-500 mb-4">
+                <h3 className={`font-semibold mb-1 ${
+                  theme === 'dark'
+                    ? salesFile ? 'text-cyan-400' : 'text-white'
+                    : 'text-gray-900'
+                }`}>Sales Data (판매 데이터)</h3>
+                <p className={`text-sm mb-4 ${
+                  theme === 'dark' ? 'text-gray-500 text-xs' : 'text-gray-500'
+                }`}>
                   옵션 ID, 옵션명, 상품명, 매출, 판매량
                 </p>
                 <Button
                   variant={salesFile ? 'outline' : 'default'}
-                  className={`w-full ${salesFile ? 'border-green-500 text-green-700 hover:bg-green-50' : ''}`}
+                  className={`w-full ${
+                    theme === 'dark'
+                      ? salesFile
+                        ? 'border-cyan-500 text-cyan-400 hover:bg-cyan-500/10'
+                        : 'bg-gradient-to-br from-cyan-500/20 to-cyan-500/10 hover:from-cyan-500/30 hover:to-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                      : salesFile
+                        ? 'border-green-500 text-green-700 hover:bg-green-50'
+                        : ''
+                  }`}
                   asChild
                 >
                   <label className="cursor-pointer">
@@ -255,18 +315,36 @@ function HomePage() {
               {/* Ads File */}
               <div
                 className={`border-2 rounded-lg p-6 text-center transition-colors ${
-                  adsFile
-                    ? 'bg-green-50 border-green-500'
-                    : 'bg-white border-gray-200 hover:border-gray-300'
+                  theme === 'dark'
+                    ? adsFile
+                      ? 'bg-cyan-500/10 border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.2)]'
+                      : 'bg-gray-900/50 border-gray-700 hover:border-gray-600'
+                    : adsFile
+                      ? 'bg-green-50 border-green-500'
+                      : 'bg-white border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <h3 className="font-semibold text-gray-900 mb-1">Advertising Data (광고 데이터)</h3>
-                <p className="text-sm text-gray-500 mb-4">
+                <h3 className={`font-semibold mb-1 ${
+                  theme === 'dark'
+                    ? adsFile ? 'text-cyan-400' : 'text-white'
+                    : 'text-gray-900'
+                }`}>Advertising Data (광고 데이터)</h3>
+                <p className={`text-sm mb-4 ${
+                  theme === 'dark' ? 'text-gray-500 text-xs' : 'text-gray-500'
+                }`}>
                   광고 집행 옵션 ID, 광고비, 노출수, 클릭수
                 </p>
                 <Button
                   variant={adsFile ? 'outline' : 'default'}
-                  className={`w-full ${adsFile ? 'border-green-500 text-green-700 hover:bg-green-50' : ''}`}
+                  className={`w-full ${
+                    theme === 'dark'
+                      ? adsFile
+                        ? 'border-cyan-500 text-cyan-400 hover:bg-cyan-500/10'
+                        : 'bg-gradient-to-br from-cyan-500/20 to-cyan-500/10 hover:from-cyan-500/30 hover:to-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                      : adsFile
+                        ? 'border-green-500 text-green-700 hover:bg-green-50'
+                        : ''
+                  }`}
                   asChild
                 >
                   <label className="cursor-pointer">
@@ -295,13 +373,15 @@ function HomePage() {
 
             {/* Date Input */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-900 mb-2">
-                데이터 날짜 <span className="text-red-500">*</span>
+              <label className={`block text-sm font-medium mb-2 ${
+                theme === 'dark' ? 'text-gray-300' : 'text-gray-900'
+              }`}>
+                데이터 날짜 <span className={theme === 'dark' ? 'text-cyan-400' : 'text-red-500'}>*</span>
               </label>
               <DatePicker
                 selected={dataDate}
                 onChange={(date) => setDataDate(date)}
-                customInput={<CustomDateInput />}
+                customInput={React.createElement(createCustomDateInput(theme))}
                 dateFormat="yyyy-MM-dd"
                 placeholderText="날짜를 선택하세요"
                 isClearable={false}
@@ -309,13 +389,19 @@ function HomePage() {
                 renderCustomHeader={renderCustomHeader}
                 maxDate={new Date()}
               />
-              <p className="text-xs text-gray-500 mt-1">판매 및 광고 데이터의 정확한 날짜를 선택하세요</p>
+              <p className={`text-xs mt-1 ${
+                theme === 'dark' ? 'text-gray-500' : 'text-gray-500'
+              }`}>판매 및 광고 데이터의 정확한 날짜를 선택하세요</p>
             </div>
 
             {/* Upload Button */}
             <Button
               size="lg"
-              className="w-full bg-blue-600 hover:bg-blue-700"
+              className={`w-full ${
+                theme === 'dark'
+                  ? 'bg-gradient-to-br from-cyan-500/20 to-cyan-500/10 hover:from-cyan-500/30 hover:to-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-50'
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
               onClick={handleUpload}
               disabled={!allFilesSelected || uploading}
             >
@@ -326,8 +412,12 @@ function HomePage() {
             {/* Progress */}
             {uploading && (
               <div className="mt-4">
-                <Progress value={uploadProgress} className="h-2" />
-                <p className="text-sm text-gray-500 mt-2 text-center">
+                <Progress value={uploadProgress} className={`h-2 ${
+                  theme === 'dark' ? 'bg-gray-800' : ''
+                }`} />
+                <p className={`text-sm mt-2 text-center ${
+                  theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                }`}>
                   파일 처리 및 통합 중... {uploadProgress}%
                 </p>
               </div>
@@ -409,12 +499,18 @@ function HomePage() {
         )}
 
         {/* Instructions */}
-        <Card className="mt-6 bg-gray-50 shadow-lg">
+        <Card className={`mt-6 shadow-lg ${
+          theme === 'dark'
+            ? 'bg-[#1a1d23] border-gray-800'
+            : 'bg-gray-50'
+        }`}>
           <CardHeader>
-            <CardTitle>사용 방법</CardTitle>
+            <CardTitle className={theme === 'dark' ? 'text-white' : ''}>사용 방법</CardTitle>
           </CardHeader>
           <CardContent>
-            <ol className="list-decimal list-inside space-y-3 text-sm text-gray-700">
+            <ol className={`list-decimal list-inside space-y-3 text-sm ${
+              theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+            }`}>
               <li>
                 <strong>마진 데이터 먼저 등록:</strong> 마진 관리 페이지에서 상품별 마진 데이터를 미리 등록하세요
               </li>
@@ -453,7 +549,11 @@ function HomePage() {
               <li>파일은 <strong>옵션 ID</strong>를 기준으로 자동 병합됩니다 (판매 + 광고 + 마진 데이터)</li>
               <li>
                 순이익 계산식:{' '}
-                <code className="bg-gray-200 px-2 py-1 rounded text-xs">
+                <code className={`px-2 py-1 rounded text-xs ${
+                  theme === 'dark'
+                    ? 'bg-gray-800 text-cyan-400 border border-gray-700'
+                    : 'bg-gray-200'
+                }`}>
                   매출 - (도매가 + 수수료 + 부가세) × 판매량 - 광고비 × 1.1
                 </code>
               </li>
