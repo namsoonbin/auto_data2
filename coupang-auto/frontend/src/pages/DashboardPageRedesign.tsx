@@ -798,7 +798,7 @@ export default function DashboardPageRedesign() {
                       align="right"
                     />
                     <SortableHeader
-                      column="margin_rate"
+                      column="cost_rate"
                       label="마진율"
                       sortBy={sortBy}
                       sortDirection={sortDirection}
@@ -814,7 +814,7 @@ export default function DashboardPageRedesign() {
                       align="right"
                     />
                     <SortableHeader
-                      column="cost_rate"
+                      column="margin_rate"
                       label="이윤율"
                       sortBy={sortBy}
                       sortDirection={sortDirection}
@@ -861,13 +861,13 @@ export default function DashboardPageRedesign() {
                         {product.total_quantity.toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-right text-sm">
-                        {product.margin_rate.toFixed(1)}%
+                        {product.cost_rate.toFixed(1)}%
                       </td>
                       <td className="px-6 py-4 text-right text-sm">
                         {product.ad_cost_rate.toFixed(1)}%
                       </td>
                       <td className="px-6 py-4 text-right text-sm">
-                        {((product.total_profit / product.total_sales) * 100).toFixed(1)}%
+                        {product.margin_rate.toFixed(1)}%
                       </td>
                     </motion.tr>
                   ))}
